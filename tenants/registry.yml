@@ -1,0 +1,203 @@
+# SmarterOS Tenant Registry
+# Registro central de todos los tenants del sistema
+
+version: "0.1.0"
+last_updated: "2025-01-15T00:00:00Z"
+total_tenants: 0
+active_tenants: 0
+suspended_tenants: 0
+
+# Tenants activos
+tenants: []
+  # Ejemplo:
+  # - id: "tenant_001"
+  #   rut: "76543210-K"
+  #   name: "Acme Corporation"
+  #   slug: "acme"
+  #   domain: "acme.smarterbot.cl"
+  #   custom_domain: "app.acme.cl"
+  #   status: "active"
+  #   plan: "professional"
+  #   created_at: "2025-01-20T10:00:00Z"
+  #   activated_at: "2025-01-20T12:00:00Z"
+  #   owner:
+  #     email: "admin@acme.cl"
+  #     clerk_user_id: "user_xxxxxxxxxxxxxx"
+  #   services:
+  #     shopify:
+  #       enabled: true
+  #       store_url: "acme.myshopify.com"
+  #       installed_at: "2025-01-20T11:00:00Z"
+  #     odoo:
+  #       enabled: true
+  #       company_id: 2
+  #       database: "smarteros"
+  #     chatwoot:
+  #       enabled: true
+  #       account_id: 2
+  #       inbox_id: 3
+  #     botpress:
+  #       enabled: true
+  #       workspace_id: "ws_acme_xxxxx"
+  #       bot_id: "bot_acme_ecommerce"
+  #     n8n:
+  #       enabled: true
+  #       webhook_path: "/webhook/76543210-K"
+  #       workflows: ["sync-contacts", "order-automation"]
+  #   metadata:
+  #     industry: "retail"
+  #     country: "CL"
+  #     employees: 50
+  #     monthly_orders: 1000
+  #   limits:
+  #     max_users: 10
+  #     max_bots: 3
+  #     max_workflows: 20
+  #     max_storage_gb: 10
+  #   billing:
+  #     plan: "professional"
+  #     monthly_fee: 99
+  #     currency: "USD"
+  #     stripe_customer_id: "cus_xxxxxxxxxxxxx"
+  #     stripe_subscription_id: "sub_xxxxxxxxxxxxx"
+  #     next_billing_date: "2025-02-20"
+  #   health:
+  #     status: "healthy"
+  #     last_check: "2025-01-15T10:30:00Z"
+  #     uptime_percentage: 99.9
+  #     incidents: 0
+
+# Tenants suspendidos
+suspended: []
+
+# Tenants eliminados (soft delete)
+deleted: []
+
+# Estadísticas
+statistics:
+  total_created: 0
+  active: 0
+  suspended: 0
+  deleted: 0
+  by_plan:
+    free: 0
+    starter: 0
+    professional: 0
+    enterprise: 0
+  by_country:
+    CL: 0
+    US: 0
+    MX: 0
+    AR: 0
+  by_industry:
+    retail: 0
+    services: 0
+    manufacturing: 0
+    other: 0
+
+# Configuración global de tenants
+config:
+  max_tenants_per_account: 10
+  default_plan: "free"
+  trial_duration_days: 14
+  
+  # Subdomain rules
+  subdomain:
+    pattern: "^[a-z0-9-]{3,32}$"
+    reserved:
+      - www
+      - app
+      - dash
+      - api
+      - admin
+      - support
+      - help
+      - docs
+      - blog
+      - status
+      - mail
+      - cdn
+      - assets
+      - static
+      - mkt
+      - store
+      - ai
+      - n8n
+      - metabase
+      - odoo
+      - chatwoot
+      - botpress
+  
+  # Naming rules
+  naming:
+    min_length: 3
+    max_length: 64
+    allowed_chars: "a-zA-Z0-9 .-"
+    
+  # Default limits by plan
+  limits:
+    free:
+      max_users: 2
+      max_bots: 1
+      max_workflows: 5
+      max_storage_gb: 1
+      support: "community"
+    starter:
+      max_users: 5
+      max_bots: 2
+      max_workflows: 10
+      max_storage_gb: 5
+      support: "email"
+    professional:
+      max_users: 10
+      max_bots: 5
+      max_workflows: 50
+      max_storage_gb: 20
+      support: "priority"
+    enterprise:
+      max_users: -1  # unlimited
+      max_bots: -1
+      max_workflows: -1
+      max_storage_gb: 100
+      support: "dedicated"
+
+# Templates
+templates:
+  directory: "templates/"
+  available:
+    - ecommerce
+    - services
+    - manufacturing
+    - saas
+    - marketplace
+
+# Provisioning workflow
+provisioning:
+  steps:
+    - validate_input
+    - check_subdomain_availability
+    - create_database_records
+    - provision_shopify_store
+    - provision_odoo_company
+    - provision_chatwoot_account
+    - provision_botpress_workspace
+    - create_n8n_webhooks
+    - setup_dns_records
+    - generate_ssl_certificate
+    - send_welcome_email
+    - notify_admin
+  estimated_duration: "5-10 minutes"
+  rollback_enabled: true
+
+# Deprovisioning workflow
+deprovisioning:
+  steps:
+    - suspend_access
+    - backup_all_data
+    - archive_workflows
+    - delete_shopify_data
+    - soft_delete_database_records
+    - remove_dns_records
+    - notify_owner
+  retention_period: "30 days"
+  permanent_deletion_after: "90 days"

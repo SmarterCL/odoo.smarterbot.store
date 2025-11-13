@@ -1,0 +1,454 @@
+# SmarterOS Infrastructure Specification
+# Configuración completa de la infraestructura
+
+# VPS Configuration
+vps:
+  provider: "hostinger"
+  plan: "VPS 3"
+  hostname: "srv814944.hstgr.cloud"
+  ip: "89.116.23.167"
+  ssh_alias: "smarteros"
+  
+  specs:
+    cpu: 2
+    ram_gb: 8
+    storage_gb: 100
+    bandwidth_gb: 1000
+    backup: false  # Manual backups via N8N
+  
+  os:
+    distribution: "Ubuntu"
+    version: "24.04 LTS"
+    kernel: "6.8.0"
+    architecture: "x86_64"
+  
+  access:
+    ssh_port: 22
+    ssh_user: "root"
+    ssh_key: "~/.ssh/id_rsa"
+    firewall: "enabled"
+    
+  firewall_rules:
+    - port: 22
+      protocol: tcp
+      source: "0.0.0.0/0"
+      description: "SSH"
+    - port: 80
+      protocol: tcp
+      source: "0.0.0.0/0"
+      description: "HTTP"
+    - port: 443
+      protocol: tcp
+      source: "0.0.0.0/0"
+      description: "HTTPS"
+    - port: 5432
+      protocol: tcp
+      source: "127.0.0.1"
+      description: "PostgreSQL (internal only)"
+    - port: 6379
+      protocol: tcp
+      source: "127.0.0.1"
+      description: "Redis (internal only)"
+
+# Docker Configuration
+docker:
+  version: "24.0.0"
+  compose_version: "2.23.0"
+  
+  networks:
+    - name: "dokploy-network"
+      driver: "bridge"
+      subnet: "172.18.0.0/16"
+      gateway: "172.18.0.1"
+  
+  volumes:
+    - postgres-data
+    - redis-data
+    - n8n_data
+    - odoo-web-data
+    - chatwoot-data
+    - botpress-data
+    - metabase-data
+    - portainer-data
+  
+  registry:
+    provider: "Docker Hub"
+    username: "smartercl"
+
+# Container Orchestration
+orchestration:
+  platform: "dokploy"
+  version: "0.9.0"
+  url: "https://dokploy.smarterbot.cl"
+  
+  features:
+    - One-click deployments
+    - Git integration
+    - Auto SSL with Let's Encrypt
+    - Monitoring dashboard
+    - Log aggregation
+    - Backup management
+  
+  projects:
+    - name: "smarteros-backend"
+      services:
+        - postgresql
+        - redis
+        - n8n
+        - odoo
+        - chatwoot
+        - botpress
+        - metabase
+
+# Reverse Proxy
+reverse_proxy:
+  platform: "traefik"
+  version: "2.11"
+  dashboard: "https://traefik.smarterbot.cl"
+  
+  features:
+    - Automatic service discovery
+    - Let's Encrypt SSL
+    - Load balancing
+    - HTTP/2 and HTTP/3
+    - WebSocket support
+    - Middleware (rate limiting, auth, etc)
+  
+  ssl:
+    provider: "letsencrypt"
+    email: "admin@smarterbot.cl"
+    storage: "/letsencrypt/acme.json"
+    challenge: "http"
+  
+  middlewares:
+    - name: "rate-limit"
+      type: "ratelimit"
+      config:
+        average: 100
+        burst: 50
+    - name: "secure-headers"
+      type: "headers"
+      config:
+        sslRedirect: true
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+
+# DNS Configuration
+dns:
+  provider: "cloudflare"
+  zone: "smarterbot.cl"
+  zone_id: "{{ CLOUDFLARE_ZONE_ID }}"
+  
+  records:
+    # Root domain
+    - type: "A"
+      name: "@"
+      content: "89.116.23.167"
+      proxied: true
+      ttl: 1
+    
+    # Wildcard for tenants
+    - type: "A"
+      name: "*"
+      content: "89.116.23.167"
+      proxied: true
+      ttl: 1
+    
+    # Frontend services
+    - type: "CNAME"
+      name: "app"
+      content: "cname.vercel-dns.com"
+      proxied: true
+      ttl: 1
+    - type: "CNAME"
+      name: "dash"
+      content: "cname.vercel-dns.com"
+      proxied: true
+      ttl: 1
+    - type: "CNAME"
+      name: "mkt"
+      content: "cname.vercel-dns.com"
+      proxied: true
+      ttl: 1
+    - type: "CNAME"
+      name: "store"
+      content: "cname.vercel-dns.com"
+      proxied: true
+      ttl: 1
+    - type: "CNAME"
+      name: "docs"
+      content: "cname.vercel-dns.com"
+      proxied: true
+      ttl: 1
+    
+    # Backend services
+    - type: "A"
+      name: "n8n"
+      content: "89.116.23.167"
+      proxied: true
+      ttl: 1
+    - type: "A"
+      name: "odoo"
+      content: "89.116.23.167"
+      proxied: true
+      ttl: 1
+    - type: "A"
+      name: "chatwoot"
+      content: "89.116.23.167"
+      proxied: true
+      ttl: 1
+    - type: "A"
+      name: "botpress"
+      content: "89.116.23.167"
+      proxied: true
+      ttl: 1
+    
+    # Infrastructure
+    - type: "A"
+      name: "ai"
+      content: "89.116.23.167"
+      proxied: true
+      ttl: 1
+      comment: "Metabase (ai.smarteros.cl)"
+    - type: "A"
+      name: "traefik"
+      content: "89.116.23.167"
+      proxied: false
+      ttl: 1
+    - type: "A"
+      name: "portainer"
+      content: "89.116.23.167"
+      proxied: true
+      ttl: 1
+  
+  cloudflare_settings:
+    ssl_mode: "full"
+    always_use_https: true
+    auto_minify:
+      html: true
+      css: true
+      js: true
+    brotli: true
+    http2: true
+    http3: true
+    zero_rtt: true
+    websockets: true
+
+# CDN Configuration
+cdn:
+  provider: "cloudflare"
+  
+  cache:
+    browser_ttl: 14400  # 4 hours
+    edge_ttl: 7200  # 2 hours
+    
+  cache_rules:
+    - pattern: "*.js"
+      ttl: 86400  # 1 day
+    - pattern: "*.css"
+      ttl: 86400
+    - pattern: "*.jpg|*.jpeg|*.png|*.gif|*.webp"
+      ttl: 604800  # 1 week
+    - pattern: "*.woff|*.woff2|*.ttf"
+      ttl: 2592000  # 30 days
+
+# Backup Configuration
+backup:
+  enabled: true
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  retention_days: 7
+  location: "/backups"
+  
+  strategy:
+    type: "incremental"
+    full_backup_day: "sunday"
+  
+  targets:
+    - type: "postgresql"
+      databases:
+        - smarteros
+        - n8n
+        - chatwoot
+        - botpress
+      method: "pg_dumpall"
+      compression: "gzip"
+    
+    - type: "docker_volumes"
+      volumes:
+        - n8n_data
+        - odoo-web-data
+        - chatwoot-data
+        - botpress-data
+      method: "tar"
+      compression: "gzip"
+    
+    - type: "files"
+      paths:
+        - /etc/traefik
+        - /etc/dokploy
+      method: "rsync"
+  
+  notifications:
+    on_success: false
+    on_failure: true
+    channels:
+      - email: "admin@smarterbot.cl"
+
+# Monitoring
+monitoring:
+  enabled: true
+  
+  health_checks:
+    interval: "5m"
+    timeout: "10s"
+    
+    endpoints:
+      - url: "https://app.smarterbot.cl"
+        expected_status: 200
+      - url: "https://n8n.smarterbot.cl/healthz"
+        expected_status: 200
+      - url: "https://odoo.smarterbot.cl/web/login"
+        expected_status: 200
+      - url: "https://chatwoot.smarterbot.cl/api"
+        expected_status: 200
+      - url: "https://botpress.smarterbot.cl/api/v1/health"
+        expected_status: 200
+  
+  metrics:
+    cpu_threshold: 80
+    ram_threshold: 85
+    disk_threshold: 90
+    
+  log_aggregation:
+    method: "docker logs"
+    retention_days: 7
+    
+  observability:
+    metabase_url: "https://ai.smarteros.cl"
+    dashboards:
+      - name: "System Health"
+        auto_refresh: "5m"
+      - name: "Tenant Analytics"
+        auto_refresh: "15m"
+      - name: "Service Performance"
+        auto_refresh: "10m"
+
+# Security
+security:
+  ssl:
+    provider: "letsencrypt"
+    auto_renew: true
+    
+  firewall:
+    provider: "hostinger-firewall"
+    default_policy: "deny"
+    
+  secrets:
+    storage: "env-files"
+    location: "~/dev/2025/system/env"
+    encryption: false  # TODO: Add vault in production
+    
+  access_control:
+    ssh:
+      password_auth: false
+      key_only: true
+      port: 22
+    
+    services:
+      internal_only:
+        - postgresql
+        - redis
+      
+      public_with_auth:
+        - n8n
+        - odoo
+        - chatwoot
+        - botpress
+        - metabase
+        - portainer
+  
+  rate_limiting:
+    enabled: true
+    requests_per_minute: 100
+    burst: 50
+  
+  ddos_protection:
+    provider: "cloudflare"
+    enabled: true
+
+# Disaster Recovery
+disaster_recovery:
+  rto: "4 hours"  # Recovery Time Objective
+  rpo: "24 hours"  # Recovery Point Objective
+  
+  backup_locations:
+    - type: "local"
+      path: "/backups"
+    - type: "remote"
+      provider: "planned"
+      # TODO: Add S3 or similar
+  
+  recovery_procedures:
+    - step: "Restore PostgreSQL from backup"
+      command: "psql < backup.sql"
+    - step: "Restore Docker volumes"
+      command: "docker run --rm -v volume:/data -v backup:/backup alpine tar xzf /backup/data.tar.gz -C /data"
+    - step: "Restart services"
+      command: "docker-compose up -d"
+    - step: "Verify health checks"
+      command: "curl health endpoints"
+  
+  failover:
+    enabled: false
+    secondary_region: "planned"
+    # TODO: Multi-region deployment
+
+# Performance Optimization
+performance:
+  database:
+    postgresql:
+      max_connections: 100
+      shared_buffers: "2GB"
+      effective_cache_size: "6GB"
+      maintenance_work_mem: "512MB"
+      checkpoint_completion_target: 0.9
+      wal_buffers: "16MB"
+      default_statistics_target: 100
+      random_page_cost: 1.1
+      effective_io_concurrency: 200
+    
+    redis:
+      maxmemory: "1GB"
+      maxmemory_policy: "allkeys-lru"
+  
+  web:
+    gzip: true
+    brotli: true
+    http2: true
+    http3: true
+  
+  caching:
+    strategy: "edge + browser"
+    edge_ttl: 7200
+    browser_ttl: 14400
+
+# Cost Estimation
+costs:
+  monthly:
+    vps: 20
+    domains: 15
+    vercel: 0  # Free tier
+    supabase: 0  # Free tier
+    cloudflare: 0  # Free tier
+    
+    # Variable costs (estimated)
+    shopify_per_tenant: 39  # Minimum plan
+    
+    total_fixed: 35
+    total_per_tenant: 39
+    
+    # Scaling costs
+    at_10_tenants: 425
+    at_50_tenants: 1985
+    at_100_tenants: 3935

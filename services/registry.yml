@@ -1,0 +1,398 @@
+# SmarterOS Services Registry
+# Registro de todos los microservicios del sistema
+
+version: "0.1.0"
+last_updated: "2025-01-15T00:00:00Z"
+
+# Services catalog
+services:
+  
+  # ============================================
+  # FRONTEND SERVICES
+  # ============================================
+  
+  - id: "app"
+    name: "Main Web Application"
+    type: "frontend"
+    status: "active"
+    url: "https://app.smarterbot.cl"
+    repository: "https://github.com/SmarterCL/app.smarterbot.cl"
+    tech_stack:
+      framework: "Next.js 15"
+      runtime: "Node.js 20"
+      language: "TypeScript"
+      ui: "Tailwind CSS + Shadcn UI"
+    deployment:
+      platform: "Vercel"
+      auto_deploy: true
+      branch: "main"
+    environment:
+      CLERK_PUBLISHABLE_KEY: "required"
+      NEXT_PUBLIC_SUPABASE_URL: "required"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "required"
+    health_check:
+      endpoint: "/"
+      expected_status: 200
+      interval: "5m"
+  
+  - id: "dash"
+    name: "Multi-tenant Dashboard"
+    type: "frontend"
+    status: "planned"
+    url: "https://dash.smarterbot.cl"
+    repository: "https://github.com/SmarterCL/dash.smarterbot.cl"
+    description: "Tenant management dashboard"
+  
+  - id: "mkt"
+    name: "Marketing Website"
+    type: "frontend"
+    status: "planned"
+    url: "https://mkt.smarterbot.cl"
+    repository: "https://github.com/SmarterCL/mkt.smarterbot.cl"
+    description: "Public marketing site"
+  
+  - id: "store"
+    name: "Skills Marketplace"
+    type: "frontend"
+    status: "planned"
+    url: "https://store.smarterbot.cl"
+    repository: "https://github.com/SmarterCL/store.smarterbot.cl"
+    description: "Marketplace for bots, workflows, and skills"
+  
+  - id: "docs"
+    name: "Documentation Portal"
+    type: "frontend"
+    status: "planned"
+    url: "https://docs.smarterbot.cl"
+    repository: "https://github.com/SmarterCL/docs.smarterbot.cl"
+    description: "Technical documentation and API reference"
+  
+  # ============================================
+  # BACKEND SERVICES
+  # ============================================
+  
+  - id: "n8n"
+    name: "N8N Workflow Automation"
+    type: "backend"
+    status: "active"
+    url: "https://n8n.smarterbot.cl"
+    tech_stack:
+      platform: "N8N"
+      version: "1.62.0"
+      runtime: "Node.js"
+    deployment:
+      platform: "Docker (VPS)"
+      container_name: "n8n"
+      image: "n8nio/n8n:latest"
+      volumes:
+        - "n8n_data:/home/node/.n8n"
+      ports:
+        - "5678:5678"
+      environment:
+        N8N_HOST: "n8n.smarterbot.cl"
+        N8N_PORT: "5678"
+        N8N_PROTOCOL: "https"
+        WEBHOOK_URL: "https://n8n.smarterbot.cl/"
+    health_check:
+      endpoint: "/healthz"
+      expected_status: 200
+      interval: "5m"
+  
+  - id: "supabase"
+    name: "Supabase Database"
+    type: "backend"
+    status: "active"
+    url: "https://supabase.com/dashboard"
+    tech_stack:
+      platform: "Supabase"
+      database: "PostgreSQL 16"
+      realtime: "enabled"
+      storage: "enabled"
+      edge_functions: "enabled"
+    deployment:
+      platform: "Supabase Cloud"
+      project_id: "your-project-ref"
+    features:
+      - Row Level Security (RLS)
+      - Realtime subscriptions
+      - File storage
+      - Edge functions
+      - Auth (optional, using Clerk instead)
+    health_check:
+      endpoint: "/rest/v1/"
+      expected_status: 200
+      interval: "5m"
+  
+  - id: "odoo"
+    name: "Odoo ERP"
+    type: "backend"
+    status: "active"
+    url: "https://odoo.smarterbot.cl"
+    tech_stack:
+      platform: "Odoo"
+      version: "17.0"
+      language: "Python"
+      database: "PostgreSQL"
+    deployment:
+      platform: "Docker (VPS)"
+      container_name: "odoo"
+      image: "odoo:17.0"
+      volumes:
+        - "odoo-web-data:/var/lib/odoo"
+      ports:
+        - "8069:8069"
+    modules:
+      - crm
+      - sales
+      - contacts
+      - website
+      - ecommerce
+    health_check:
+      endpoint: "/web/login"
+      expected_status: 200
+      interval: "15m"
+  
+  - id: "chatwoot"
+    name: "Chatwoot Customer Support"
+    type: "backend"
+    status: "active"
+    url: "https://chatwoot.smarterbot.cl"
+    tech_stack:
+      platform: "Chatwoot"
+      version: "3.13.0"
+      language: "Ruby on Rails"
+      database: "PostgreSQL"
+      cache: "Redis"
+    deployment:
+      platform: "Docker (VPS)"
+      container_name: "chatwoot"
+      image: "chatwoot/chatwoot:latest"
+      volumes:
+        - "chatwoot-data:/app/storage"
+      ports:
+        - "3000:3000"
+    health_check:
+      endpoint: "/api"
+      expected_status: 200
+      interval: "10m"
+  
+  - id: "botpress"
+    name: "Botpress Conversational AI"
+    type: "backend"
+    status: "active"
+    url: "https://botpress.smarterbot.cl"
+    tech_stack:
+      platform: "Botpress"
+      version: "12.26.0"
+      language: "TypeScript"
+      database: "PostgreSQL"
+    deployment:
+      platform: "Docker (VPS)"
+      container_name: "botpress"
+      image: "botpress/server:latest"
+      volumes:
+        - "botpress-data:/botpress/data"
+      ports:
+        - "3001:3000"
+    health_check:
+      endpoint: "/api/v1/health"
+      expected_status: 200
+      interval: "10m"
+  
+  # ============================================
+  # INFRASTRUCTURE SERVICES
+  # ============================================
+  
+  - id: "traefik"
+    name: "Traefik Reverse Proxy"
+    type: "infrastructure"
+    status: "active"
+    tech_stack:
+      platform: "Traefik"
+      version: "2.11"
+    deployment:
+      platform: "Docker (VPS)"
+      container_name: "traefik"
+      image: "traefik:2.11"
+      ports:
+        - "80:80"
+        - "443:443"
+        - "8080:8080"
+    features:
+      - Automatic SSL with Let's Encrypt
+      - Load balancing
+      - Service discovery
+      - Dashboard
+    health_check:
+      endpoint: "/ping"
+      expected_status: 200
+      interval: "5m"
+  
+  - id: "postgresql"
+    name: "PostgreSQL Database"
+    type: "infrastructure"
+    status: "active"
+    tech_stack:
+      database: "PostgreSQL"
+      version: "16"
+    deployment:
+      platform: "Docker (VPS)"
+      container_name: "postgres"
+      image: "postgres:16"
+      volumes:
+        - "postgres-data:/var/lib/postgresql/data"
+      ports:
+        - "5432:5432"
+    databases:
+      - smarteros  # Main database
+      - n8n
+      - chatwoot
+      - botpress
+    health_check:
+      command: "pg_isready"
+      interval: "10s"
+  
+  - id: "redis"
+    name: "Redis Cache"
+    type: "infrastructure"
+    status: "active"
+    tech_stack:
+      cache: "Redis"
+      version: "7.2"
+    deployment:
+      platform: "Docker (VPS)"
+      container_name: "redis"
+      image: "redis:7.2-alpine"
+      volumes:
+        - "redis-data:/data"
+      ports:
+        - "6379:6379"
+    health_check:
+      command: "redis-cli ping"
+      expected_output: "PONG"
+      interval: "10s"
+  
+  - id: "metabase"
+    name: "Metabase Analytics"
+    type: "infrastructure"
+    status: "active"
+    url: "https://ai.smarteros.cl"
+    tech_stack:
+      platform: "Metabase"
+      version: "latest"
+      database: "PostgreSQL"
+    deployment:
+      platform: "Docker (VPS)"
+      container_name: "metabase"
+      image: "metabase/metabase:latest"
+      volumes:
+        - "metabase-data:/metabase-data"
+      ports:
+        - "3002:3000"
+    health_check:
+      endpoint: "/api/health"
+      expected_status: 200
+      interval: "15m"
+  
+  - id: "portainer"
+    name: "Portainer Container Management"
+    type: "infrastructure"
+    status: "active"
+    url: "https://portainer.smarterbot.cl"
+    tech_stack:
+      platform: "Portainer"
+      version: "latest"
+    deployment:
+      platform: "Docker (VPS)"
+      container_name: "portainer"
+      image: "portainer/portainer-ce:latest"
+      volumes:
+        - "/var/run/docker.sock:/var/run/docker.sock"
+        - "portainer-data:/data"
+      ports:
+        - "9000:9000"
+    health_check:
+      endpoint: "/api/status"
+      expected_status: 200
+      interval: "15m"
+
+# Service dependencies
+dependencies:
+  app:
+    - supabase
+    - clerk
+    - n8n
+  dash:
+    - supabase
+    - clerk
+    - n8n
+  n8n:
+    - postgresql
+    - redis
+  odoo:
+    - postgresql
+  chatwoot:
+    - postgresql
+    - redis
+  botpress:
+    - postgresql
+  metabase:
+    - postgresql
+
+# Service groups
+groups:
+  frontend:
+    - app
+    - dash
+    - mkt
+    - store
+    - docs
+  
+  backend:
+    - n8n
+    - supabase
+    - odoo
+    - chatwoot
+    - botpress
+  
+  infrastructure:
+    - traefik
+    - postgresql
+    - redis
+    - metabase
+    - portainer
+  
+  multi_tenant:
+    - odoo
+    - chatwoot
+    - botpress
+    - shopify
+
+# Deployment order
+deployment_order:
+  - postgresql
+  - redis
+  - traefik
+  - n8n
+  - odoo
+  - chatwoot
+  - botpress
+  - metabase
+  - portainer
+  - app
+  - dash
+
+# Backup priority
+backup_priority:
+  critical:
+    - postgresql
+    - supabase
+    - n8n
+  high:
+    - odoo
+    - chatwoot
+    - botpress
+  medium:
+    - metabase
+  low:
+    - redis
