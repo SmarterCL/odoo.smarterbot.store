@@ -3,8 +3,9 @@
 ## 🎯 Servicios Activos
 
 ### Frontend
-- **app.smarterbot.cl** - Next.js 15, Clerk, Supabase, Vercel
-- **smarterbot.store** - Shopify storefront
+- **app.smarterbot.cl** - Next.js 15, Clerk, Supabase, Vercel (Dashboard principal)
+- **smarterbot.store** - Next.js 15 + Shopify Storefront (E-commerce)
+- **store.smarterbot.cl** - Local frontend para smarterbot.store (desarrollo)
 
 ### Backend Core
 - **Odoo 17.0** - ERP completo (odoo.smarterbot.cl)

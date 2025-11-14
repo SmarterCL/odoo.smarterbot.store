@@ -7,8 +7,8 @@ Este repositorio contiene las specs centrales de SmarterOS, un sistema operativo
 SmarterOS combina:
 
 - **Odoo** como núcleo operativo (ERP)
-- **Shopify + MCP** como capa comercial
-- **n8n** como motor de reglas
+- **Shopify + MCP** como capa comercial (smarterbot.store)
+- **n8n** como motor de reglas y automatizaciones
 - **Metabase** como analítica central
 - **AI Smarterbot** como copiloto
 - **Hostinger VPS** como entorno de ejecución
