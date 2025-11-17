@@ -1,0 +1,121 @@
+version: 1
+updated_at: 2025-11-17
+nodes:
+  - id: chatwoot-frontend
+    host: chatwoot.smarterbot.cl
+    kind: frontend
+    description: UI de mensajería unificada (Next.js)
+    repo: https://github.com/SmarterCL/chatwoot.smarterbot.cl
+    status: active
+    version: 2.10.1
+    auth:
+      public: true
+      methods: []
+    depends_on: [chatwoot-backend]
+
+  - id: chatwoot-backend
+    host: api.chatwoot.smarterbot.cl
+    kind: api
+    description: Chatwoot Rails API (Docker)
+    repo: https://github.com/SmarterCL/dkcompose
+    status: active
+    version: 2.10.1
+    auth:
+      public: false
+      methods: [vault-token]
+    depends_on: [postgres, redis]
+
+  - id: core-api
+    host: api.smarterbot.cl
+    kind: api
+    description: API Core del Sistema Operativo (gateway de servicios)
+    repo: https://github.com/SmarterCL/SmarterOS
+    status: planned
+    version: 0.1.0
+    auth:
+      public: false
+      methods: [vault-token, clerk]
+    depends_on: [vault, redpanda]
+
+  - id: mcp-server
+    host: mcp.smarterbot.cl
+    kind: mcp
+    description: Servidor MCP oficial con tools de SmarterOS
+    repo: https://github.com/SmarterCL/SmarterOS
+    status: planned
+    version: 0.1.0
+    auth:
+      public: false
+      methods: [vault-mtls, vault-token]
+    tools:
+      - smarteros.tenant.create
+      - smarteros.messages.send
+      - smarteros.shopify.getOrder
+      - smarteros.whatsapp.send
+      - smarteros.redpanda.publish
+      - smarteros.n8n.trigger
+      - smarteros.supabase.select
+      - smarteros.chatwoot.getConversation
+      - smarteros.chatwoot.sendMessage
+      - smarteros.vault.issueToken
+    depends_on: [vault, redpanda]
+
+  - id: vault
+    host: vault.smarterbot.cl
+    kind: service
+    description: HashiCorp Vault (tokens efímeros, mTLS, secrets)
+    repo: https://github.com/SmarterCL/dkcompose
+    status: active
+    version: 1.15
+    auth:
+      public: false
+      methods: [root-init-manual]
+    depends_on: []
+
+  - id: redpanda
+    host: kafka.smarterbot.cl
+    kind: service
+    description: Redpanda (Kafka-compatible) + Console
+    repo: https://github.com/SmarterCL/dkcompose
+    status: active
+    version: latest
+    auth:
+      public: false
+      methods: [internal]
+    depends_on: []
+
+  - id: n8n
+    host: n8n.smarterbot.cl
+    kind: service
+    description: N8N workflows (webhooks + automations)
+    repo: https://github.com/SmarterCL/dkcompose
+    status: active
+    version: latest
+    auth:
+      public: restricted
+      methods: [signed-webhooks]
+    depends_on: [postgres]
+
+  - id: postgres
+    host: smarter-postgres
+    kind: data
+    description: PostgreSQL + pgvector cluster
+    repo: https://github.com/SmarterCL/dkcompose
+    status: active
+    version: 16
+    auth:
+      public: false
+      methods: [internal]
+    depends_on: []
+
+  - id: redis
+    host: smarter-redis
+    kind: cache
+    description: Redis for cache, Sidekiq and ActionCable
+    repo: https://github.com/SmarterCL/dkcompose
+    status: active
+    version: 7
+    auth:
+      public: false
+      methods: [internal]
+    depends_on: []
