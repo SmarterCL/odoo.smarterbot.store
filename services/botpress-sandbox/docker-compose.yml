@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  botpress:
+    image: botpress/server:latest
+    container_name: botpress-sandbox
+    ports:
+      - "3010:3000"
+    environment:
+      - BOTPRESS_URL=http://localhost:3010
+      - DATABASE_URL=postgresql://botpress:botpress_dev_pass@postgres:5432/botpress_dev
+      - REDIS_URL=redis://redis:6379
+      - BP_MODULE_NLU_DUCKLINGURL=http://duckling:8000
+      - BP_PRODUCTION=false
+      - BP_LICENSE_KEY=${BP_LICENSE_KEY:-}
+      - BPFS_STORAGE=database
+    volumes:
+      - botpress-data:/botpress/data
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    networks:
+      - botpress-net
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: botpress-postgres
+    environment:
+      - POSTGRES_DB=botpress_dev
+      - POSTGRES_USER=botpress
+      - POSTGRES_PASSWORD=botpress_dev_pass
+    ports:
+      - "5433:5432"  # Avoid conflict with existing Postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - botpress-net
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: botpress-redis
+    ports:
+      - "6380:6379"  # Avoid conflict with existing Redis
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - botpress-net
+
+  duckling:
+    image: rasa/duckling:latest
+    container_name: botpress-duckling
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    networks:
+      - botpress-net
+
+volumes:
+  botpress-data:
+    name: botpress-sandbox-data
+  postgres-data:
+    name: botpress-sandbox-postgres
+  redis-data:
+    name: botpress-sandbox-redis
+
+networks:
+  botpress-net:
+    name: botpress-sandbox-net
+    driver: bridge
