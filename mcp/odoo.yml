@@ -1,0 +1,464 @@
+# Odoo MCP Server - SmarterOS Integration
+# Date: 2025-11-19T15:38:00Z
+# Status: active (default for all tenants)
+
+name: "Odoo MCP"
+id: "odoo-mcp"
+version: "1.0.0"
+status: "active"
+tier: "1-core"
+description: "ERP and accounting integration via Odoo XML-RPC API"
+
+# =============================================================================
+# AUTHENTICATION
+# =============================================================================
+
+auth:
+  type: "basic"
+  method: "xml-rpc"
+  endpoint: "https://erp.smarterbot.cl"
+  database: "smarteros"
+  
+  # Credentials per tenant
+  credentials_path: "secret/tenant/${tenant_id}/odoo"
+  keys:
+    username: "admin or tenant-specific user"
+    password: "Odoo user password"
+    company_id: "Odoo company ID (multi-company)"
+    database: "smarteros (shared) or tenant-specific DB"
+
+# =============================================================================
+# VAULT CONFIGURATION
+# =============================================================================
+
+vault:
+  tenant_path: "secret/tenant/${tenant_id}/odoo"
+  tenant_keys:
+    username: "admin@smarteros.cl"
+    password: "encrypted_password"
+    company_id: 1
+    database: "smarteros"
+    user_id: 2  # Odoo user ID
+    connected_at: "ISO 8601 timestamp"
+    status: "active"
+
+  # Policy
+  policy:
+    name: "mcp-odoo-read-write"
+    path: "/root/specs/vault/policies/mcp-odoo-full.hcl"
+    capabilities:
+      - "read"
+      - "list"
+      - "create"
+      - "update"
+    agents_allowed:
+      - "gemini"
+      - "copilot"
+      - "n8n"
+
+# =============================================================================
+# MCP TOOLS
+# =============================================================================
+
+tools:
+  - name: "customers_list"
+    description: "List customers (res.partner) from Odoo"
+    input_schema:
+      type: "object"
+      properties:
+        tenant_id:
+          type: "string"
+        limit:
+          type: "integer"
+          default: 50
+        offset:
+          type: "integer"
+          default: 0
+        filters:
+          type: "array"
+          description: "Odoo domain filters"
+          example: [["customer_rank", ">", 0]]
+      required: ["tenant_id"]
+    
+    implementation:
+      method: "XML-RPC"
+      model: "res.partner"
+      method_name: "search_read"
+      fields:
+        - "name"
+        - "email"
+        - "phone"
+        - "vat"  # RUT in Chile
+        - "street"
+        - "city"
+        - "country_id"
+      domain: [["customer_rank", ">", 0]]
+    
+    output_schema:
+      type: "array"
+      items:
+        type: "object"
+        properties:
+          id: "integer"
+          name: "string"
+          email: "string"
+          phone: "string"
+          vat: "string"  # RUT
+          street: "string"
+          city: "string"
+
+  - name: "products_list"
+    description: "List products (product.product) from Odoo"
+    input_schema:
+      type: "object"
+      properties:
+        tenant_id:
+          type: "string"
+        limit:
+          type: "integer"
+          default: 50
+        category_id:
+          type: "integer"
+          description: "Filter by product category"
+      required: ["tenant_id"]
+    
+    implementation:
+      method: "XML-RPC"
+      model: "product.product"
+      method_name: "search_read"
+      fields:
+        - "name"
+        - "default_code"  # SKU
+        - "list_price"
+        - "standard_price"  # Cost
+        - "qty_available"
+        - "categ_id"
+        - "active"
+    
+    output_schema:
+      type: "array"
+      items:
+        type: "object"
+        properties:
+          id: "integer"
+          name: "string"
+          default_code: "string"  # SKU
+          list_price: "number"
+          qty_available: "number"
+
+  - name: "order_create"
+    description: "Create sale order (sale.order) in Odoo"
+    input_schema:
+      type: "object"
+      properties:
+        tenant_id:
+          type: "string"
+        partner_id:
+          type: "integer"
+          description: "Customer ID"
+        partner_email:
+          type: "string"
+          description: "If partner_id not provided, search by email"
+        order_lines:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              product_id: "integer"
+              quantity: "number"
+              price_unit: "number"
+        external_id:
+          type: "string"
+          description: "Shopify order ID or other external reference"
+      required: ["tenant_id"]
+    
+    implementation:
+      method: "XML-RPC"
+      model: "sale.order"
+      method_name: "create"
+      steps:
+        - "1. Find or create partner (res.partner)"
+        - "2. Create sale.order with order_lines"
+        - "3. Confirm order (action_confirm)"
+        - "4. Return order_id and order number"
+    
+    output_schema:
+      type: "object"
+      properties:
+        order_id: "integer"
+        name: "string"  # SO001
+        amount_total: "number"
+        state: "string"  # 'draft', 'sent', 'sale'
+
+  - name: "invoice_get"
+    description: "Get invoice (account.move) by ID"
+    input_schema:
+      type: "object"
+      properties:
+        tenant_id:
+          type: "string"
+        invoice_id:
+          type: "integer"
+      required: ["tenant_id", "invoice_id"]
+    
+    implementation:
+      method: "XML-RPC"
+      model: "account.move"
+      method_name: "read"
+      fields:
+        - "name"
+        - "partner_id"
+        - "invoice_date"
+        - "amount_total"
+        - "amount_tax"
+        - "state"
+        - "invoice_pdf_report_id"  # PDF attachment
+    
+    output_schema:
+      type: "object"
+      properties:
+        id: "integer"
+        name: "string"  # INV/2025/0001
+        partner_name: "string"
+        invoice_date: "string"
+        amount_total: "number"
+        state: "string"  # 'draft', 'posted', 'cancel'
+        pdf_url: "string"
+
+  - name: "inventory_update"
+    description: "Update product inventory (stock.quant)"
+    input_schema:
+      type: "object"
+      properties:
+        tenant_id:
+          type: "string"
+        product_id:
+          type: "integer"
+        location_id:
+          type: "integer"
+          default: 8  # Stock location
+        quantity:
+          type: "number"
+          description: "New quantity (absolute value)"
+      required: ["tenant_id", "product_id", "quantity"]
+    
+    implementation:
+      method: "XML-RPC"
+      model: "stock.quant"
+      method_name: "create or update"
+      note: "Updates inventory for product in specific location"
+    
+    output_schema:
+      type: "object"
+      properties:
+        product_id: "integer"
+        quantity: "number"
+        location_id: "integer"
+        updated_at: "string"
+
+# =============================================================================
+# AGENT PERMISSIONS
+# =============================================================================
+
+agents:
+  gemini:
+    access: "full"
+    tools:
+      - "customers_list"
+      - "products_list"
+      - "order_create"
+      - "invoice_get"
+      - "inventory_update"
+    use_cases:
+      - "Customer asks about order status"
+      - "Create order from conversation"
+      - "Check product availability"
+      - "Send invoice PDF via WhatsApp"
+    vault_policy: "mcp-odoo-full"
+  
+  copilot:
+    access: "read-only"
+    tools:
+      - "customers_list"
+      - "products_list"
+      - "invoice_get"
+    use_cases:
+      - "Help developer understand Odoo schema"
+      - "Generate test orders"
+    vault_policy: "mcp-odoo-read"
+  
+  n8n:
+    access: "full"
+    tools:
+      - "all"
+    use_cases:
+      - "Shopify → Odoo order sync"
+      - "Invoice generation automation"
+      - "Inventory sync"
+    vault_policy: "mcp-odoo-full"
+
+# =============================================================================
+# TENANT CONFIGURATION
+# =============================================================================
+
+tenant_setup:
+  auto_enabled: true
+  description: "Odoo is enabled by default for all tenants"
+  
+  initial_config:
+    company_id: 1
+    database: "smarteros"
+    username: "admin@smarteros.cl"
+    
+  multi_company:
+    enabled: true
+    description: "Each tenant gets dedicated Odoo company"
+    company_naming: "Tenant ${rut} - ${name}"
+    example: "Tenant 12345678-9 - Sweet Maite"
+  
+  required_fields:
+    - rut: "Chilean Tax ID"
+    - legal_name: "Company legal name"
+    - address: "Physical address"
+    - phone: "Contact phone"
+
+# =============================================================================
+# PROTOBUF DEFINITION
+# =============================================================================
+
+protobuf:
+  path: "/root/specs/specs/proto/smarteros/v1/odoo.proto"
+  service: "OdooService"
+  rpcs:
+    - "ListCustomers"
+    - "ListProducts"
+    - "CreateOrder"
+    - "GetInvoice"
+    - "UpdateInventory"
+
+# =============================================================================
+# DEPLOYMENT & DEPENDENCIES
+# =============================================================================
+
+dependencies:
+  services:
+    - name: "Odoo"
+      url: "https://erp.smarterbot.cl"
+      container: "smarter-odoo"
+      required: true
+    
+    - name: "Vault"
+      url: "https://mainkey.smarterbot.cl"
+      required: true
+    
+    - name: "PostgreSQL"
+      container: "postgres-smarter"
+      database: "smarteros"
+      required: true
+
+  credentials:
+    - path: "secret/tenant/${tenant_id}/odoo"
+      keys:
+        - "username"
+        - "password"
+        - "company_id"
+
+# =============================================================================
+# HEALTH & MONITORING
+# =============================================================================
+
+health:
+  endpoint: "https://erp.smarterbot.cl/web/health"
+  checks:
+    - name: "odoo_accessible"
+      description: "Odoo web server responds"
+      critical: true
+    
+    - name: "database_connection"
+      description: "PostgreSQL connection OK"
+      critical: true
+    
+    - name: "xml_rpc_available"
+      description: "XML-RPC endpoint responds"
+      critical: true
+
+metrics:
+  - name: "odoo_api_requests"
+    type: "counter"
+    labels: ["tenant_id", "model", "method", "status"]
+  
+  - name: "odoo_api_latency"
+    type: "histogram"
+    labels: ["tenant_id", "model", "method"]
+  
+  - name: "odoo_orders_created"
+    type: "counter"
+    labels: ["tenant_id", "source"]  # shopify, manual, api
+
+# =============================================================================
+# EXAMPLE USAGE
+# =============================================================================
+
+examples:
+  - name: "List customers for tenant"
+    tool: "customers_list"
+    input:
+      tenant_id: "tenant_demo_001"
+      limit: 10
+    output:
+      - id: 7
+        name: "Juan Pérez"
+        email: "juan@example.com"
+        vat: "12345678-9"
+        phone: "+56979540471"
+  
+  - name: "Create sale order from Shopify"
+    tool: "order_create"
+    input:
+      tenant_id: "tenant_demo_001"
+      partner_email: "cliente@example.com"
+      order_lines:
+        - product_id: 123
+          quantity: 2
+          price_unit: 19990
+      external_id: "shopify_order_7891234567890"
+    output:
+      order_id: 42
+      name: "SO042"
+      amount_total: 39980
+      state: "sale"
+
+# =============================================================================
+# SECURITY
+# =============================================================================
+
+security:
+  credentials_storage: "Vault KV v2 (encrypted at rest)"
+  xml_rpc_over_https: true
+  rate_limiting: "100 requests/minute per tenant"
+  
+  compliance:
+    - "Multi-company isolation (Odoo native)"
+    - "RLS at database level"
+    - "Audit logs enabled"
+
+# =============================================================================
+# ROADMAP
+# =============================================================================
+
+roadmap:
+  current:
+    - "XML-RPC integration ✅"
+    - "Multi-company per tenant ✅"
+    - "Basic CRUD operations ✅"
+  
+  next_quarter:
+    - "GraphQL API support"
+    - "Real-time webhooks (Odoo → n8n)"
+    - "Advanced reporting tools"
+    - "Chilean localization (SII integration)"
+  
+  future:
+    - "Odoo Studio custom models"
+    - "Dedicated Odoo instance per enterprise tenant"
+    - "Multi-currency support"
