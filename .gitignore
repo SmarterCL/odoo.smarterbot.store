@@ -298,3 +298,4 @@ tenants/*/data/*.dump
 !CHANGELOG.md
 !LICENSE
 !docs/**/*
+supabase/.env
