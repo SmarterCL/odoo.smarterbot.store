@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"  # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - caddy_logs:/var/log/caddy
+    networks:
+      - traefik-network
+      - dokploy-network
+    environment:
+      - CADDY_INGRESS_NETWORKS=traefik-network,dokploy-network
+
+volumes:
+  caddy_data:
+    name: caddy_data
+  caddy_config:
+    name: caddy_config
+  caddy_logs:
+    name: caddy_logs
+
+networks:
+  traefik-network:
+    external: true
+    name: root_traefik-network
+  dokploy-network:
+    external: true
+    name: dokploy-network

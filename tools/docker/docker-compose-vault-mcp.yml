@@ -1,0 +1,52 @@
+version: "3.9"
+
+services:
+  vault-mcp-server:
+    build:
+      context: ./vault-mcp
+      dockerfile: Dockerfile
+      target: dev
+    container_name: smarteros-vault-mcp
+    restart: unless-stopped
+    environment:
+      # Vault connection
+      VAULT_ADDR: ${VAULT_ADDR:-http://89.116.23.167:8200}
+      VAULT_TOKEN: ${VAULT_TOKEN}
+      VAULT_NAMESPACE: ${VAULT_NAMESPACE:-}
+      
+      # Transport mode
+      TRANSPORT_MODE: http
+      TRANSPORT_HOST: 0.0.0.0
+      TRANSPORT_PORT: 8080
+      
+      # MCP configuration
+      MCP_ENDPOINT: /mcp
+      MCP_ALLOWED_ORIGINS: https://mcp.smarterbot.cl,https://mcp.smarterbot.store,https://n8n.smarterbot.cl
+      MCP_CORS_MODE: strict
+      
+      # Rate limiting
+      MCP_RATE_LIMIT_GLOBAL: 50:100
+      MCP_RATE_LIMIT_SESSION: 10:20
+      
+    ports:
+      - "8081:8080"
+    
+    networks:
+      - smarter-net
+    
+    labels:
+      # Caddy labels
+      - caddy=mcp.smarterbot.cl
+      - caddy.reverse_proxy={{upstreams 8080}}
+      - caddy.tls=internal
+      
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/mcp"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  smarter-net:
+    external: true

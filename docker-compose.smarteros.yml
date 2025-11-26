@@ -1,0 +1,59 @@
+version: '3.9'
+
+services:
+  smarter-login:
+    image: ghcr.io/smartercl/login.smarter:latest
+    container_name: smarter-login
+    restart: always
+    ports:
+      - "3000:3000"
+    networks:
+      - smarteros
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    ports:
+      - "5678:5678"
+    volumes:
+      - ./tools/n8n:/home/node/.n8n
+    environment:
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+    networks:
+      - smarteros
+
+  hostinger-mcp:
+    image: mcp/api-mcp-server:latest
+    container_name: hostinger-mcp
+    environment:
+      APITOKEN: ${HOSTINGER_API_TOKEN}
+    networks:
+      - smarteros
+
+  smarter-mcp:
+    build: ./tools/mcp
+    container_name: smarter-mcp
+    networks:
+      - smarteros
+
+  caddy:
+    image: caddy:latest
+    container_name: caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./tools/caddy/Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - smarteros
+    restart: always
+
+networks:
+  smarteros:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

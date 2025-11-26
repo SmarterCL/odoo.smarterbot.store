@@ -1,0 +1,27 @@
+services:
+  nexa-server:
+    image: nexaai/nexa-server:latest
+    container_name: nexa-server
+    ports:
+      - "8000:8000"
+    volumes:
+      - nexa_models:/root/.cache/nexa
+    environment:
+      - NEXA_MODEL=qwen3-1.7b-q4_k_m
+    command: ["nexa", "serve", "--host", "0.0.0.0:8000"]
+    networks:
+      - root_traefik-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nexa.rule=Host(\`nexa.smarterbot.cl\`)"
+      - "traefik.http.routers.nexa.entrypoints=websecure"
+      - "traefik.http.routers.nexa.tls.certresolver=letsencrypt"
+      - "traefik.http.services.nexa.loadbalancer.server.port=8000"
+    restart: unless-stopped
+
+networks:
+  root_traefik-network:
+    external: true
+
+volumes:
+  nexa_models:

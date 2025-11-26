@@ -1,0 +1,140 @@
+version: '3.8'
+
+networks:
+  smarteros-network:
+    external: true
+
+services:
+  # Google MCP Security
+  mcp-google-security:
+    image: google/mcp-security:latest
+    container_name: mcp-google-security
+    restart: unless-stopped
+    networks:
+      - smarteros-network
+    environment:
+      - SECURITY_API_KEY=${GOOGLE_SECURITY_API_KEY}
+      - CHRONICLE_INSTANCE=${CHRONICLE_INSTANCE}
+      - LOG_LEVEL=info
+    volumes:
+      - ./data/security-cache:/var/cache/mcp-security
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "smarteros.service=mcp"
+      - "smarteros.mcp.type=security"
+      
+  # Google MCP Database Toolbox
+  mcp-db-toolbox:
+    image: google/genai-toolbox-database:latest
+    container_name: mcp-db-toolbox
+    restart: unless-stopped
+    networks:
+      - smarteros-network
+    environment:
+      # Supabase
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_SERVICE_ROLE}
+      
+      # Postgres (if separate)
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB:-smarteros}
+      - POSTGRES_USER=${POSTGRES_USER:-smarteros}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      
+      # BigQuery (optional)
+      - BIGQUERY_PROJECT_ID=${BIGQUERY_PROJECT_ID}
+      - GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcp-credentials.json
+      
+      # MySQL (optional)
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_PORT=${MYSQL_PORT:-3306}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      
+      - LOG_LEVEL=info
+    volumes:
+      - ./secrets/gcp-credentials.json:/secrets/gcp-credentials.json:ro
+      - ./data/db-cache:/var/cache/mcp-db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "smarteros.service=mcp"
+      - "smarteros.mcp.type=database"
+      
+  # SmarterOS MCP Engine (orchestrator)
+  smarteros-engine:
+    build:
+      context: ./smarteros-engine
+      dockerfile: Dockerfile
+    container_name: smarteros-engine
+    restart: unless-stopped
+    networks:
+      - smarteros-network
+    environment:
+      - MCP_CONFIG=/config/smartermcp.yml
+      - GITHUB_MCP_TOKEN=${GITHUB_MCP_TOKEN}
+      - LOG_LEVEL=info
+      
+      # Integration tokens
+      - N8N_API_KEY=${N8N_API_KEY}
+      - CHATWOOT_TOKEN=${CHATWOOT_TOKEN}
+      - TRELLO_API_KEY=${TRELLO_API_KEY}
+      - TRELLO_TOKEN=${TRELLO_TOKEN}
+      
+    volumes:
+      - ./smarteros-engine/smartermcp.yml:/config/smartermcp.yml:ro
+      - ./data/engine-logs:/var/log/smarteros
+      - ./data/engine-cache:/var/cache/smarteros
+    ports:
+      - "8100:8000"  # MCP Engine API
+    depends_on:
+      - mcp-google-security
+      - mcp-db-toolbox
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "smarteros.service=mcp"
+      - "smarteros.mcp.type=engine"
+      - "traefik.enable=true"
+      - "traefik.http.routers.mcp-engine.rule=Host(`mcp.smarterbot.cl`)"
+      - "traefik.http.routers.mcp-engine.tls=true"
+      - "traefik.http.routers.mcp-engine.tls.certresolver=letsencrypt"
+      
+  # MCP Console (Web UI)
+  mcp-console:
+    build:
+      context: ./mcp-console
+      dockerfile: Dockerfile
+    container_name: mcp-console
+    restart: unless-stopped
+    networks:
+      - smarteros-network
+    environment:
+      - MCP_ENGINE_URL=http://smarteros-engine:8000
+      - NEXT_PUBLIC_MCP_API_URL=https://mcp.smarterbot.cl
+    ports:
+      - "3100:3000"
+    depends_on:
+      - smarteros-engine
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mcp-console.rule=Host(`mcp-console.smarterbot.cl`)"
+      - "traefik.http.routers.mcp-console.tls=true"
+      - "traefik.http.routers.mcp-console.tls.certresolver=letsencrypt"
+
+volumes:
+  security-cache:
+  db-cache:
+  engine-logs:
+  engine-cache:

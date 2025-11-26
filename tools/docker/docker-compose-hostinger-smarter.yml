@@ -1,0 +1,70 @@
+version: "3.8"
+
+networks:
+  smarteros:
+    external: true
+
+services:
+  # Hostinger MCP Server
+  hostinger-mcp:
+    image: mcp/api-mcp-server:latest
+    container_name: hostinger-mcp
+    networks:
+      - smarteros
+    environment:
+      - APITOKEN=${HOSTINGER_API_TOKEN}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "echo", "ok"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # n8n con Hostinger node
+  n8n-hostinger:
+    image: n8nio/n8n:latest
+    container_name: n8n-hostinger
+    networks:
+      - smarteros
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=n8n.smarterbot.store
+      - N8N_PROTOCOL=https
+      - N8N_PORT=5678
+      - WEBHOOK_URL=https://n8n.smarterbot.store
+      - GENERIC_TIMEZONE=America/Santiago
+      - N8N_METRICS=true
+      - N8N_LOG_LEVEL=info
+      # Hostinger API Token disponible para workflows
+      - HOSTINGER_API_TOKEN=${HOSTINGER_API_TOKEN}
+    volumes:
+      - /root/n8n:/home/node/.n8n
+    restart: unless-stopped
+    command: >
+      sh -c "
+        npm install -g n8n-nodes-hostinger-api@latest &&
+        n8n start
+      "
+
+  # Smarter MCP Orchestrator
+  smarter-mcp:
+    image: node:20-alpine
+    container_name: smarter-mcp
+    networks:
+      - smarteros
+    working_dir: /app
+    volumes:
+      - /root/smarter-mcp:/app
+    environment:
+      - HOSTINGER_MCP_URL=http://hostinger-mcp:3000
+      - N8N_API_URL=http://n8n-hostinger:5678/api/v1
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+    restart: unless-stopped
+    command: sh -c "npm install && npm start"
+    depends_on:
+      - hostinger-mcp
+      - n8n-hostinger
+

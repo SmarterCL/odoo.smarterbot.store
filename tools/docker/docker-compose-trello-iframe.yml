@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  trello-api-proxy:
+    image: node:18-alpine
+    container_name: trello-api-proxy
+    restart: unless-stopped
+    working_dir: /app
+    command: node trello-api-proxy.js
+    volumes:
+      - /root/trello-api-proxy.js:/app/trello-api-proxy.js:ro
+    networks:
+      - caddy_network
+
+  trello-dashboard:
+    build: /root/trello-dashboard
+    container_name: trello-dashboard
+    restart: unless-stopped
+    networks:
+      - caddy_network
+    environment:
+      - NODE_ENV=production
+
+networks:
+  caddy_network:
+    external: true
+

@@ -1,0 +1,241 @@
+{
+    email admin@smarterbot.cl
+    admin off
+}
+
+# Odoo ERP
+odoo.smarterbot.cl {
+    reverse_proxy http://odoo-backend:8069
+    
+    header {
+        -Server
+        X-Frame-Options "SAMEORIGIN"
+    }
+    
+    log {
+        output file /var/log/caddy/odoo.log
+        level INFO
+    }
+}
+
+# Tienda - Odoo Shop
+tienda.smarterbot.cl, tienda.smarterbot.store {
+    reverse_proxy http://odoo-backend:8069
+    
+    header {
+        -Server
+        X-Frame-Options "SAMEORIGIN"
+    }
+    
+    log {
+        output file /var/log/caddy/tienda.log
+        level INFO
+    }
+}
+
+# API Gateway
+api.smarterbot.cl {
+    reverse_proxy http://smartapi:8000
+    
+    header {
+        -Server
+    }
+    
+    log {
+        output file /var/log/caddy/api.log
+    }
+}
+
+# Marketing - PENDIENTE (BlogBowl removido - plataforma no madura)
+# mkt.smarterbot.cl - Reserved for future marketing platform
+# mkt.smarterbot.store - Reserved for future marketing platform
+# TODO: Buscar alternativa estable para módulo de marketing
+
+# KPI - Metabase Analytics
+kpi.smarterbot.cl, kpi.smarterbot.store {
+    reverse_proxy http://smarteros-metabase-v57:3000
+    encode gzip
+    
+    header {
+        -Server
+        X-Frame-Options "DENY"
+    }
+    
+    log {
+        output file /var/log/caddy/kpi.log
+        level INFO
+    }
+}
+
+# Chatwoot - Customer Communication Platform
+chatwoot.smarterbot.cl, chatwoot.smarterbot.store {
+    reverse_proxy http://smarter-chatwoot:3000
+    encode gzip
+    
+    header {
+        -Server
+        X-Frame-Options "SAMEORIGIN"
+    }
+    
+    log {
+        output file /var/log/caddy/chatwoot.log
+        level INFO
+    }
+}
+
+# n8n - Automation Platform
+n8n.smarterbot.cl, n8n.smarterbot.store {
+    reverse_proxy http://smarter-n8n:5678
+    encode gzip
+    
+    header {
+        -Server
+        X-Frame-Options "SAMEORIGIN"
+    }
+    
+    log {
+        output file /var/log/caddy/n8n.log
+        level INFO
+    }
+}
+
+# Dokploy - DevOps Platform
+dokploy.smarterbot.store {
+    reverse_proxy http://dokploy:3000
+    
+    header {
+        -Server
+        X-Frame-Options "SAMEORIGIN"
+    }
+    
+    log {
+        output file /var/log/caddy/dokploy.log
+        level INFO
+    }
+}
+
+# ERP - Odoo ERP System
+erp.smarterbot.cl, erp.smarterbot.store {
+    reverse_proxy http://odoo-backend:8069
+    
+    header {
+        -Server
+        X-Frame-Options "SAMEORIGIN"
+    }
+    
+    log {
+        output file /var/log/caddy/erp.log
+        level INFO
+    }
+}
+
+# CRM - Chatwoot CRM System
+crm.smarterbot.cl, crm.smarterbot.store {
+    reverse_proxy http://smarter-chatwoot:3000
+    encode gzip
+    
+    header {
+        -Server
+    }
+    
+    log {
+        output file /var/log/caddy/crm.log
+        level INFO
+    }
+}
+
+# MCP Registry - Model Context Protocol
+mcp.smarterbot.cl, mcp.smarterbot.store {
+    reverse_proxy http://mcp-registry-web:80
+    encode gzip
+    
+    header {
+        -Server
+    }
+    
+    log {
+        output file /var/log/caddy/mcp.log
+        level INFO
+    }
+}
+
+# Mainkey - Vault Secrets Management
+mainkey.smarterbot.cl, mainkey.smarterbot.store {
+    reverse_proxy http://172.17.0.1:8200
+    
+    header {
+        -Server
+        X-Frame-Options "DENY"
+    }
+    
+    log {
+        output file /var/log/caddy/mainkey.log
+        level INFO
+    }
+}
+
+# Trello API Proxy
+trello-api.smarterbot.store {
+    reverse_proxy trello-api-proxy:3500
+    
+    header {
+        Access-Control-Allow-Origin "*"
+        Access-Control-Allow-Methods "GET, OPTIONS"
+        Access-Control-Allow-Headers "Content-Type"
+    }
+    
+    tls {
+        protocols tls1.2 tls1.3
+    }
+    
+    log {
+        output file /var/log/caddy/trello-api.log
+        level INFO
+    }
+}
+
+# Trello Next.js Dashboard
+trello.smarterbot.store {
+    reverse_proxy trello-dashboard:3501
+    
+    encode gzip
+    
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "no-referrer-when-downgrade"
+    }
+    
+    tls {
+        protocols tls1.2 tls1.3
+    }
+    
+    log {
+        output file /var/log/caddy/trello-access.log
+        level INFO
+    }
+}
+
+# SmarterOS Assets (icons, images)
+assets.smarterbot.store {
+    reverse_proxy smarteros-assets:80
+    
+    encode gzip
+    
+    header {
+        Cache-Control "public, max-age=31536000, immutable"
+        Access-Control-Allow-Origin "*"
+        X-Content-Type-Options "nosniff"
+    }
+    
+    tls {
+        protocols tls1.2 tls1.3
+    }
+    
+    log {
+        output file /var/log/caddy/assets-access.log
+        level INFO
+    }
+}

@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+  traefik-api-gateway:
+    image: traefik:v3.0
+    container_name: traefik-api-gateway
+    restart: unless-stopped
+    
+    ports:
+      - "8080:80"      # HTTP (will redirect to HTTPS)
+      - "8443:443"     # HTTPS
+      - "8090:8080"    # Dashboard
+    
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /root/traefik.yml:/etc/traefik/traefik.yml:ro
+      - /root/traefik-dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - /root/letsencrypt:/letsencrypt
+      - traefik-logs:/var/log/traefik
+    
+    networks:
+      - smarter-net
+    
+    environment:
+      - TZ=America/Santiago
+    
+    labels:
+      - "traefik.enable=true"
+      # Dashboard
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.smarterbot.cl`)"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
+    
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  traefik-logs:
+
+networks:
+  smarter-net:
+    external: true
