@@ -11,7 +11,7 @@ const pilotFeatures = [
 
 export function TestimonialsSection() {
   return (
-    <section className="py-20 lg:py-32 bg-muted scroll-mt-24">
+    <section className="py-20 lg:py-32 bg-muted">
       <div className="container mx-auto px-4">
         <div className="max-w-3xl mx-auto text-center">
           <p className="text-sm font-medium text-primary mb-4">Prueba sin riesgo</p>

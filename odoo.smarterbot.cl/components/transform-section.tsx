@@ -11,7 +11,7 @@ const benefits = [
 
 export function TransformSection() {
   return (
-    <section id="diferenciadores" className="py-20 lg:py-32 bg-muted scroll-mt-24">
+    <section id="diferenciadores" className="py-20 lg:py-32 bg-muted">
       <div className="container mx-auto px-4">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           {/* Left - Image */}

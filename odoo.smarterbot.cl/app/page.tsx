@@ -1,7 +1,6 @@
 import { Header } from "@/components/header"
 import { HeroSection } from "@/components/hero-section"
 import { ServicesSection } from "@/components/services-section"
-import { ModulesSection } from "@/components/modules-section"
 import { TransformSection } from "@/components/transform-section"
 import { StatsSection } from "@/components/stats-section"
 import { VerticalsSection } from "@/components/verticals-section"
@@ -14,7 +13,6 @@ export default function HomePage() {
     <main className="min-h-screen bg-background">
       <Header />
       <HeroSection />
-      <ModulesSection />
       <ServicesSection />
       <TransformSection />
       <StatsSection />
