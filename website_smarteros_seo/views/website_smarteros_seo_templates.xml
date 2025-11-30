@@ -4,21 +4,34 @@
     <template id="smarteros_seo_head" inherit_id="website.layout" name="SmarterOS SEO Head">
         <xpath expr="//head" position="inside">
             <t t-set="canonical_url" t-value="env['ir.config_parameter'].sudo().get_param('website.primary_canonical_url') or 'https://odoo.smarterbot.cl/'"/>
+            <t t-set="base_url" t-value="canonical_url.rstrip('/')"/>
+            <!-- Mobile viewport for responsive design -->
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0"/>
+            <!-- Preconnect for performance -->
+            <link rel="preconnect" href="https://schema.org"/>
+            <link rel="dns-prefetch" href="https://wa.me"/>
+            <!-- Canonical URL -->
             <link rel="canonical" t-att-href="canonical_url"/>
+            <!-- SEO meta tags -->
             <meta name="description" content="Implementación Odoo Enterprise en Chile con automatización n8n, WhatsApp Business e IA local. Menos integración dolorosa, más operación real."/>
             <meta name="robots" content="index,follow"/>
+            <!-- Open Graph meta tags -->
             <meta property="og:locale" content="es_CL"/>
             <meta property="og:type" content="website"/>
             <meta property="og:title" content="Odoo ERP Chile + Automatización e IA | SmarterOS"/>
             <meta property="og:description" content="Implementamos Odoo conectado a WhatsApp, IA local con Ollama y flujos n8n. Piloto guiado sin riesgo."/>
             <meta property="og:url" t-att-content="canonical_url"/>
             <meta property="og:site_name" content="SmarterOS"/>
-            <meta property="og:image" content="/modern-tech-dashboard-with-automation-flows-and-ai.jpg"/>
+            <meta property="og:image" t-att-content="base_url + '/modern-tech-dashboard-with-automation-flows-and-ai.jpg'"/>
             <meta property="og:image:alt" content="Dashboard de automatización e IA integrado con Odoo"/>
+            <meta property="og:image:width" content="1200"/>
+            <meta property="og:image:height" content="630"/>
+            <!-- Twitter Card meta tags -->
             <meta name="twitter:card" content="summary_large_image"/>
             <meta name="twitter:title" content="Odoo ERP + Automatización e IA"/>
             <meta name="twitter:description" content="Odoo conectado a WhatsApp, n8n y IA local. Piloto sin riesgo."/>
-            <meta name="twitter:image" content="/modern-tech-dashboard-with-automation-flows-and-ai.jpg"/>
+            <meta name="twitter:image" t-att-content="base_url + '/modern-tech-dashboard-with-automation-flows-and-ai.jpg'"/>
+            <!-- Structured data JSON-LD -->
             <script type="application/ld+json">
             {"@context": "https://schema.org","@type": "Organization","name": "SmarterOS Chile","url": "https://odoo.smarterbot.cl/","logo":"https://odoo.smarterbot.cl/modern-tech-dashboard-with-automation-flows-and-ai.jpg","sameAs":["https://wa.me/56979540471"],"description":"Implementación y automatización Odoo en Chile con IA local, WhatsApp Business y n8n."}
             </script>
