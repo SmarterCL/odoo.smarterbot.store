@@ -8,7 +8,8 @@
     'depends': ['website'],
     'data': [
         'data/ir_config_parameter.xml',
-        'views/website_smarteros_seo_templates.xml'
+        'views/website_smarteros_seo_templates.xml',
+        'views/website_smarteros_seo_extended.xml'
     ],
     'installable': True,
     'application': False,

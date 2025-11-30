@@ -93,6 +93,8 @@ Documentación relacionada (en entorno original):
 - Añadir sitemap único y robots.txt actualizado.
 - Medir impacto en Search Console (cobertura / rendimiento).
 - Extender JSON-LD para FAQ y servicios específicos.
+- Completar FAQ real y descomentar bloque FAQPage en `website_smarteros_seo_extended.xml`.
+- Optimizar imágenes y reemplazar `<img>` por `<picture>` con `srcset`.
 
 ## Comandos útiles
 
@@ -102,4 +104,10 @@ odoo -u website_smarteros_seo -d <database>
 
 # Cambiar parámetro canonical (en shell Odoo)
 python -c "import odoo; odoo.cli.main(['','shell','-d','<database>','-c','/etc/odoo/odoo.conf','-p','print(env['ir.config_parameter'].sudo().set_param('website.primary_canonical_url', 'https://odoo.smarterbot.cl/'))'])"
+
+# Ver robots.txt servido
+curl -s https://odoo.smarterbot.store/robots.txt
+
+# Regenerar/forzar sitemap (Odoo suele manejarlo automáticamente)
+curl -I https://odoo.smarterbot.store/sitemap.xml
 ```
