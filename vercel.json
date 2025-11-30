@@ -1,0 +1,14 @@
+{
+  "builds": [
+    {
+      "src": "odoo.smarterbot.cl/next.config.mjs",
+      "use": "@vercel/next"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "odoo.smarterbot.cl/$1"
+    }
+  ]
+}
