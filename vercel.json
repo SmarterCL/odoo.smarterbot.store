@@ -1,7 +1,7 @@
 {
   "builds": [
     {
-      "src": "odoo.smarterbot.cl/next.config.mjs",
+      "src": "odoo.smarterbot.cl/package.json",
       "use": "@vercel/next"
     }
   ],
