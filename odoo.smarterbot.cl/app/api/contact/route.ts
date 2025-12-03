@@ -2,7 +2,8 @@ import { NextResponse } from "next/server"
 
 const RESEND_ENDPOINT = "https://api.resend.com/emails"
 const TO_EMAIL = "smarterbotcl@gmail.com"
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "noreply@smarterbot.cl"
+// Resend solo acepta remitentes verificados o el dominio onboarding@resend.dev
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "SmarterOS <onboarding@resend.dev>"
 
 export async function POST(request: Request) {
   try {
