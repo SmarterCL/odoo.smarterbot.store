@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState } from "react"
-import { openBookingPopup } from "@/lib/open-booking"
+import { openWhatsAppDemo } from "@/lib/whatsapp-demo"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -85,7 +85,7 @@ export function ContactSection() {
               </p>
               <Button
                 className="mt-4 bg-primary text-primary-foreground hover:bg-primary/90"
-                onClick={openBookingPopup}
+                onClick={openWhatsAppDemo}
               >
                 Agenda una demo
               </Button>

@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { DEMO_WHATSAPP_URL } from "@/lib/whatsapp-demo"
 import { Button } from "@/components/ui/button"
 
 const footerLinks = {
@@ -41,7 +42,9 @@ export function Footer() {
               Plataforma de automatización y ERP basada en Odoo, n8n, Chatwoot, Supabase y Ollama. Chile - proyectos
               remotos y presenciales.
             </p>
-            <Button className="bg-primary text-primary-foreground hover:bg-primary/90">Agenda una demo</Button>
+            <Button asChild className="bg-primary text-primary-foreground hover:bg-primary/90">
+              <a href={DEMO_WHATSAPP_URL}>Agenda una demo</a>
+            </Button>
           </div>
 
           {/* Servicios */}
