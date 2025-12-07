@@ -20,8 +20,8 @@ const contactInfo = [
   {
     icon: Mail,
     label: "Email",
-    value: "contacto@smarterbot.cl",
-    href: "mailto:contacto@smarterbot.cl",
+    value: "smarterbotcl@gmail.com",
+    href: "mailto:smarterbotcl@gmail.com",
   },
   {
     icon: Clock,
