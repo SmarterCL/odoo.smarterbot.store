@@ -1,0 +1,83 @@
+# Reverse Proxy Configuration
+# Updated: 2025-11-18
+
+proxy:
+  name: "Caddy"
+  version: "2-alpine"
+  status: "active"
+  migration_from: "Traefik"
+  migration_date: "2025-11-18"
+  
+  features:
+    - Automatic HTTPS with Let's Encrypt
+    - HTTP/3 support
+    - Zero-downtime reloads
+    - Simple configuration syntax
+    - Built-in ACME client
+    - Automatic certificate renewal
+    
+  deployment:
+    platform: "Docker (VPS)"
+    container_name: "caddy-proxy"
+    image: "caddy:2-alpine"
+    ports:
+      - "80:80"       # HTTP
+      - "443:443"     # HTTPS
+      - "443:443/udp" # HTTP/3
+      - "2019:2019"   # Admin API (internal)
+    volumes:
+      - "./Caddyfile:/etc/caddy/Caddyfile:ro"
+      - "caddy_data:/data"
+      - "caddy_config:/config"
+      - "caddy_logs:/var/log/caddy"
+    networks:
+      - root_traefik-network
+      - dokploy-network
+    environment:
+      CADDY_INGRESS_NETWORKS: "traefik-network,dokploy-network"
+      
+  configuration:
+    file: "/root/Caddyfile"
+    email: "admin@smarterbot.cl"
+    acme_ca: "https://acme-v02.api.letsencrypt.org/directory"
+    
+  ssl_certificates:
+    provider: "Let's Encrypt"
+    auto_renewal: true
+    renewal_window: "30 days before expiration"
+    fallback_issuer: "ZeroSSL"
+    
+  domains_configured:
+    - kpi.smarterbot.cl
+    - chatwoot.smarterbot.cl
+    - chat.smarterbot.cl
+    - n8n.smarterbot.cl
+    - odoo.smarterbot.cl
+    - portainer.smarterbot.cl
+    - dokploy.smarterbot.cl
+    - dokploy.smarterbot.store
+    - ai.smarterbot.store
+    
+  management:
+    reload_command: "docker exec caddy-proxy caddy reload --config /etc/caddy/Caddyfile"
+    validate_command: "docker exec caddy-proxy caddy validate --config /etc/caddy/Caddyfile"
+    logs_command: "docker logs -f caddy-proxy"
+    config_location: "/root/Caddyfile"
+    
+  monitoring:
+    metrics_endpoint: "http://localhost:2019/metrics"
+    format: "Prometheus"
+    health_check: "http://localhost:2019/health"
+    
+  backup:
+    certificates: "/var/lib/docker/volumes/caddy_data/_data/caddy/certificates"
+    config: "/root/Caddyfile"
+    frequency: "daily"
+    
+previous_proxy:
+  name: "Traefik"
+  version: "2.11"
+  status: "deprecated"
+  migrated_on: "2025-11-18"
+  reason: "Simplified configuration, better SSL management"
+  backup_location: "/root/backups/traefik-*"

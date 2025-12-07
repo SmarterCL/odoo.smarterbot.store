@@ -1,0 +1,68 @@
+# smarteros-specs/services/mkt-smarterbot.yml
+apiVersion: smarteros/v1
+kind: Service
+metadata:
+  name: mkt-smarterbot
+  displayName: SmarterOS Marketing Site
+  description: >
+    Official marketing and content site for SmarterOS platform.
+    Next.js-based landing page showcasing features, pricing, and integrations.
+  tags:
+    - marketing
+    - nextjs
+    - frontend
+    - public
+
+spec:
+  category: frontend
+  tenantMode: public
+
+  ingress:
+    enabled: true
+    hosts:
+      - mkt.smarterbot.cl
+      - mkt.smarterbot.store
+    path: /
+    protocol: https
+
+  runtime:
+    type: docker
+    serviceName: smarteros-blogbowl
+    containerPort: 3000
+    healthcheck:
+      path: /
+      intervalSeconds: 30
+      timeoutSeconds: 10
+      retries: 3
+
+  network:
+    internalName: smarter-net
+    exposeInternallyAs: http://smarteros-blogbowl:3000
+
+  dependencies:
+    - name: caddy
+      required: true
+
+  config:
+    framework: nextjs
+    version: "14.0.4"
+    buildMode: standalone
+    features:
+      - SEO optimized
+      - Static generation
+      - API routes ready
+      - Multi-domain support
+
+  deployment:
+    strategy: rolling
+    replicas: 1
+    resources:
+      memory: 512Mi
+      cpu: 0.5
+
+  integrations:
+    future:
+      - clerk_auth
+      - analytics
+      - blog_cms
+      - shopify_storefront

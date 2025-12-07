@@ -1,0 +1,55 @@
+# Tenant: Demo SmarterOS
+id: "tenant_demo_001"
+rut: "00000000-0"
+name: "Demo SmarterOS"
+slug: "demo"
+domain: "demo.smarterbot.cl"
+status: "active"
+plan: "professional"
+created_at: "2025-11-19T15:14:56Z"
+activated_at: "2025-11-19T15:14:56Z"
+
+owner:
+  email: "smarterbotcl@gmail.com"
+  name: "Admin Demo"
+
+services:
+  shopify:
+    enabled: false
+    store_url: "demo-smarter.myshopify.com"
+    note: "Pendiente: crear tienda Shopify"
+  
+  odoo:
+    enabled: true
+    company_id: 1
+    database: "smarteros"
+    url: "https://odoo.smarterbot.cl"
+  
+  chatwoot:
+    enabled: true
+    account_id: 1
+    url: "https://chatwoot.smarterbot.cl"
+  
+  n8n:
+    enabled: true
+    webhook_path: "/webhook/00000000-0"
+    workflows: []
+  
+  metabase:
+    enabled: true
+    url: "https://kpi.smarterbot.store"
+
+metadata:
+  industry: "demo"
+  country: "CL"
+  timezone: "America/Santiago"
+
+limits:
+  max_users: 10
+  max_bots: 5
+  max_workflows: 50
+  max_storage_gb: 20
+
+health:
+  status: "healthy"
+  last_check: "2025-11-19T15:14:56Z"

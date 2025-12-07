@@ -1,0 +1,508 @@
+# Chatwoot MCP Server - SmarterOS Integration
+# Date: 2025-11-19T15:40:00Z
+# Status: active (default for all tenants)
+
+name: "Chatwoot MCP"
+id: "chatwoot-mcp"
+version: "1.0.0"
+status: "active"
+tier: "1-core"
+description: "CRM and customer support via Chatwoot REST API"
+
+# =============================================================================
+# AUTHENTICATION
+# =============================================================================
+
+auth:
+  type: "api_token"
+  method: "header"
+  header_name: "api_access_token"
+  endpoint: "https://crm.smarterbot.cl"
+  
+  # Per-tenant API tokens
+  credentials_path: "secret/tenant/${tenant_id}/chatwoot"
+  keys:
+    api_token: "Chatwoot API access token"
+    account_id: "Chatwoot account ID (multi-account)"
+    inbox_id: "Default inbox ID (WhatsApp, web widget, etc)"
+    webhook_url: "Incoming webhook URL for n8n"
+
+# =============================================================================
+# VAULT CONFIGURATION
+# =============================================================================
+
+vault:
+  tenant_path: "secret/tenant/${tenant_id}/chatwoot"
+  tenant_keys:
+    api_token: "encrypted_token"
+    account_id: 1
+    inbox_id: 3  # WhatsApp inbox
+    webhook_url: "https://n8n.smarterbot.cl/webhook/chatwoot/${tenant_id}"
+    connected_at: "ISO 8601 timestamp"
+    status: "active"
+
+  policy:
+    name: "mcp-chatwoot-full"
+    path: "/root/specs/vault/policies/mcp-chatwoot-full.hcl"
+    capabilities:
+      - "read"
+      - "list"
+      - "create"
+      - "update"
+    agents_allowed:
+      - "gemini"
+      - "botpress"
+      - "n8n"
+
+# =============================================================================
+# MCP TOOLS
+# =============================================================================
+
+tools:
+  - name: "conversations_list"
+    description: "List conversations from Chatwoot"
+    input_schema:
+      type: "object"
+      properties:
+        tenant_id:
+          type: "string"
+        account_id:
+          type: "integer"
+        status:
+          type: "string"
+          enum: ["open", "resolved", "pending", "all"]
+          default: "open"
+        assignee_type:
+          type: "string"
+          enum: ["me", "unassigned", "all"]
+          default: "all"
+        page:
+          type: "integer"
+          default: 1
+      required: ["tenant_id", "account_id"]
+    
+    implementation:
+      method: "GET"
+      endpoint: "https://crm.smarterbot.cl/api/v1/accounts/${account_id}/conversations"
+      headers:
+        api_access_token: "${VAULT:secret/tenant/${tenant_id}/chatwoot#api_token}"
+      query_params:
+        status: "${status}"
+        assignee_type: "${assignee_type}"
+        page: "${page}"
+    
+    output_schema:
+      type: "object"
+      properties:
+        meta:
+          type: "object"
+          properties:
+            count: "integer"
+            current_page: "integer"
+        payload:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              id: "integer"
+              inbox_id: "integer"
+              status: "string"
+              messages_count: "integer"
+              contact:
+                type: "object"
+                properties:
+                  id: "integer"
+                  name: "string"
+                  email: "string"
+                  phone_number: "string"
+
+  - name: "conversation_get"
+    description: "Get conversation details with messages"
+    input_schema:
+      type: "object"
+      properties:
+        tenant_id:
+          type: "string"
+        account_id:
+          type: "integer"
+        conversation_id:
+          type: "integer"
+      required: ["tenant_id", "account_id", "conversation_id"]
+    
+    implementation:
+      method: "GET"
+      endpoint: "https://crm.smarterbot.cl/api/v1/accounts/${account_id}/conversations/${conversation_id}"
+      headers:
+        api_access_token: "${VAULT:secret/tenant/${tenant_id}/chatwoot#api_token}"
+    
+    output_schema:
+      type: "object"
+      properties:
+        id: "integer"
+        messages:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              id: "integer"
+              content: "string"
+              message_type: "string"  # incoming, outgoing
+              created_at: "string"
+              sender:
+                type: "object"
+                properties:
+                  name: "string"
+                  type: "string"  # contact, agent
+
+  - name: "message_create"
+    description: "Send message in conversation"
+    input_schema:
+      type: "object"
+      properties:
+        tenant_id:
+          type: "string"
+        account_id:
+          type: "integer"
+        conversation_id:
+          type: "integer"
+        content:
+          type: "string"
+          description: "Message content"
+        message_type:
+          type: "string"
+          enum: ["outgoing", "incoming"]
+          default: "outgoing"
+        private:
+          type: "boolean"
+          default: false
+          description: "Private note (not sent to customer)"
+      required: ["tenant_id", "account_id", "conversation_id", "content"]
+    
+    implementation:
+      method: "POST"
+      endpoint: "https://crm.smarterbot.cl/api/v1/accounts/${account_id}/conversations/${conversation_id}/messages"
+      headers:
+        api_access_token: "${VAULT:secret/tenant/${tenant_id}/chatwoot#api_token}"
+        Content-Type: "application/json"
+      body:
+        content: "${content}"
+        message_type: "${message_type}"
+        private: "${private}"
+    
+    output_schema:
+      type: "object"
+      properties:
+        id: "integer"
+        content: "string"
+        conversation_id: "integer"
+        created_at: "string"
+        status: "string"  # sent, delivered, read
+
+  - name: "contact_create"
+    description: "Create or update contact"
+    input_schema:
+      type: "object"
+      properties:
+        tenant_id:
+          type: "string"
+        account_id:
+          type: "integer"
+        name:
+          type: "string"
+        email:
+          type: "string"
+        phone_number:
+          type: "string"
+        identifier:
+          type: "string"
+          description: "External identifier (e.g., Shopify customer ID)"
+        custom_attributes:
+          type: "object"
+          description: "Additional metadata"
+      required: ["tenant_id", "account_id"]
+    
+    implementation:
+      method: "POST"
+      endpoint: "https://crm.smarterbot.cl/api/v1/accounts/${account_id}/contacts"
+      headers:
+        api_access_token: "${VAULT:secret/tenant/${tenant_id}/chatwoot#api_token}"
+        Content-Type: "application/json"
+      body:
+        name: "${name}"
+        email: "${email}"
+        phone_number: "${phone_number}"
+        identifier: "${identifier}"
+        custom_attributes: "${custom_attributes}"
+    
+    output_schema:
+      type: "object"
+      properties:
+        payload:
+          type: "object"
+          properties:
+            contact:
+              type: "object"
+              properties:
+                id: "integer"
+                name: "string"
+                email: "string"
+                phone_number: "string"
+
+  - name: "conversation_assign"
+    description: "Assign conversation to agent or team"
+    input_schema:
+      type: "object"
+      properties:
+        tenant_id:
+          type: "string"
+        account_id:
+          type: "integer"
+        conversation_id:
+          type: "integer"
+        assignee_id:
+          type: "integer"
+          description: "Agent user ID"
+        team_id:
+          type: "integer"
+          description: "Team ID"
+      required: ["tenant_id", "account_id", "conversation_id"]
+    
+    implementation:
+      method: "POST"
+      endpoint: "https://crm.smarterbot.cl/api/v1/accounts/${account_id}/conversations/${conversation_id}/assignments"
+      headers:
+        api_access_token: "${VAULT:secret/tenant/${tenant_id}/chatwoot#api_token}"
+        Content-Type: "application/json"
+      body:
+        assignee_id: "${assignee_id}"
+        team_id: "${team_id}"
+    
+    output_schema:
+      type: "object"
+      properties:
+        id: "integer"
+        assignee:
+          type: "object"
+          properties:
+            id: "integer"
+            name: "string"
+
+# =============================================================================
+# AGENT PERMISSIONS
+# =============================================================================
+
+agents:
+  gemini:
+    access: "full"
+    tools:
+      - "conversations_list"
+      - "conversation_get"
+      - "message_create"
+      - "contact_create"
+    use_cases:
+      - "Respond to customer inquiries"
+      - "Create contacts from conversation"
+      - "Send automated responses"
+      - "Escalate to human agent"
+    vault_policy: "mcp-chatwoot-full"
+  
+  botpress:
+    access: "full"
+    tools:
+      - "message_create"
+      - "conversation_get"
+      - "contact_create"
+    use_cases:
+      - "AI agent responses via Chatwoot"
+      - "Handoff to human agent"
+      - "Context preservation"
+    vault_policy: "mcp-chatwoot-full"
+  
+  n8n:
+    access: "full"
+    tools:
+      - "all"
+    use_cases:
+      - "Webhook processing (incoming messages)"
+      - "Automated workflows"
+      - "CRM sync"
+    vault_policy: "mcp-chatwoot-full"
+
+# =============================================================================
+# WEBHOOKS
+# =============================================================================
+
+webhooks:
+  incoming:
+    description: "Chatwoot → n8n webhooks"
+    url_pattern: "https://n8n.smarterbot.cl/webhook/chatwoot/${tenant_id}"
+    
+    events:
+      - event: "message_created"
+        payload_example:
+          event: "message_created"
+          account:
+            id: 1
+          conversation:
+            id: 12345
+          sender:
+            id: 9988
+            name: "Juan Pérez"
+            phone_number: "+56979540471"
+          content: "Hola, necesito ayuda"
+          message_type: "incoming"
+          created_at: "2025-11-19T15:45:00Z"
+      
+      - event: "conversation_status_changed"
+        payload_example:
+          event: "conversation_status_changed"
+          conversation_id: 12345
+          status: "resolved"  # or "open", "pending"
+      
+      - event: "conversation_created"
+        payload_example:
+          event: "conversation_created"
+          conversation_id: 12345
+          inbox_id: 3
+          contact_id: 9988
+
+# =============================================================================
+# PROTOBUF DEFINITION
+# =============================================================================
+
+protobuf:
+  path: "/root/specs/specs/proto/smarteros/v1/chatwoot.proto"
+  service: "ChatwootService"
+  rpcs:
+    - "ListConversations"
+    - "GetConversation"
+    - "CreateMessage"
+    - "CreateContact"
+    - "AssignConversation"
+
+# =============================================================================
+# DEPENDENCIES
+# =============================================================================
+
+dependencies:
+  services:
+    - name: "Chatwoot"
+      url: "https://crm.smarterbot.cl"
+      container: "smarter-chatwoot"
+      required: true
+    
+    - name: "Vault"
+      url: "https://mainkey.smarterbot.cl"
+      required: true
+    
+    - name: "n8n"
+      url: "https://n8n.smarterbot.cl"
+      required: true
+      purpose: "Webhook processing"
+
+  credentials:
+    - path: "secret/tenant/${tenant_id}/chatwoot"
+      keys:
+        - "api_token"
+        - "account_id"
+        - "inbox_id"
+
+# =============================================================================
+# HEALTH & MONITORING
+# =============================================================================
+
+health:
+  endpoint: "https://crm.smarterbot.cl/api/health"
+  checks:
+    - name: "chatwoot_accessible"
+      critical: true
+    
+    - name: "whatsapp_inbox_connected"
+      critical: false
+    
+    - name: "active_conversations"
+      description: "Count of open conversations"
+      critical: false
+
+metrics:
+  - name: "chatwoot_api_requests"
+    type: "counter"
+    labels: ["tenant_id", "endpoint", "method", "status"]
+  
+  - name: "chatwoot_messages_sent"
+    type: "counter"
+    labels: ["tenant_id", "message_type", "channel"]
+  
+  - name: "chatwoot_conversations_active"
+    type: "gauge"
+    labels: ["tenant_id", "status"]
+
+# =============================================================================
+# EXAMPLE USAGE
+# =============================================================================
+
+examples:
+  - name: "List open conversations"
+    tool: "conversations_list"
+    input:
+      tenant_id: "tenant_demo_001"
+      account_id: 1
+      status: "open"
+    output:
+      meta:
+        count: 3
+        current_page: 1
+      payload:
+        - id: 12345
+          status: "open"
+          messages_count: 5
+          contact:
+            name: "Juan Pérez"
+            phone_number: "+56979540471"
+  
+  - name: "Send automated response"
+    tool: "message_create"
+    input:
+      tenant_id: "tenant_demo_001"
+      account_id: 1
+      conversation_id: 12345
+      content: "Gracias por tu mensaje. Un agente te responderá pronto."
+      message_type: "outgoing"
+    output:
+      id: 67890
+      content: "Gracias por tu mensaje..."
+      status: "sent"
+
+# =============================================================================
+# SECURITY
+# =============================================================================
+
+security:
+  api_token_storage: "Vault KV v2 (encrypted)"
+  rate_limiting: "200 requests/minute per tenant"
+  webhook_verification: "HMAC SHA256"
+  
+  compliance:
+    - "Multi-account isolation (Chatwoot native)"
+    - "GDPR compliant (EU customer data)"
+    - "Audit logs enabled"
+
+# =============================================================================
+# ROADMAP
+# =============================================================================
+
+roadmap:
+  current:
+    - "REST API integration ✅"
+    - "Webhook support ✅"
+    - "Multi-account per tenant ✅"
+  
+  next_quarter:
+    - "WhatsApp Business API direct integration"
+    - "Custom attributes per tenant"
+    - "SLA tracking"
+  
+  future:
+    - "AI-powered suggested responses"
+    - "Sentiment analysis"
+    - "Voice call integration"

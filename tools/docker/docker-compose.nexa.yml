@@ -1,0 +1,67 @@
+version: "3.9"
+
+services:
+  nexa-runtime:
+    # Current: Using nexa-server image
+    # TODO: Build custom multi-tenant wrapper
+    image: nexa-server:latest
+    container_name: smarteros-nexa-runtime
+    restart: unless-stopped
+    
+    environment:
+      # Model & runtime
+      NEXA_MODEL_ID: ${NEXA_MODEL_ID:-llama-3-8b-instruct}
+      NEXA_MODEL_STORE: /models
+      NEXA_BIND_ADDR: 0.0.0.0
+      NEXA_PORT: 8080
+      NEXA_LOG_LEVEL: info
+
+      # Multi-tenant (SmarterOS)
+      TENANT_MODE: multi
+      DEFAULT_TENANT_ID: demo
+
+      # Vault integration
+      VAULT_ADDR: ${VAULT_ADDR:-http://vault.smarterbot.cl:8200}
+      VAULT_TOKEN: ${VAULT_TOKEN}
+      VAULT_NAMESPACE: ${VAULT_NAMESPACE:-}
+      NEXA_VAULT_PATH_TEMPLATE: secret/data/tenant/{{tenant_id}}/nexa
+
+    volumes:
+      - nexa-models:/models
+      
+    networks:
+      - smarter-net
+      - traefik-network
+
+    labels:
+      # Caddy labels (current setup)
+      - caddy.enable=true
+      - caddy.host=ai.smarterbot.store
+      - caddy.port=8080
+      
+      # Traefik labels (for Dokploy)
+      - traefik.enable=true
+      - traefik.http.routers.nexa-runtime.rule=Host(`ai.smarterbot.store`)
+      - traefik.http.routers.nexa-runtime.entrypoints=websecure
+      - traefik.http.routers.nexa-runtime.tls=true
+      - traefik.http.routers.nexa-runtime.tls.certresolver=letsencrypt
+      - traefik.http.services.nexa-runtime.loadbalancer.server.port=8080
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  smarter-net:
+    external: true
+    name: dokploy-network
+  traefik-network:
+    external: true
+    name: root_traefik-network
+
+volumes:
+  nexa-models:
+    name: smarteros-nexa-models

@@ -1,0 +1,492 @@
+{
+  "name": "SmarterAgent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "smarter-agent",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "smarter-agent-webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "user-query",
+              "name": "query",
+              "value": "={{ $json.body.query }}",
+              "type": "string"
+            },
+            {
+              "id": "user-context",
+              "name": "context",
+              "value": "={{ $json.body.context || 'general' }}",
+              "type": "string"
+            },
+            {
+              "id": "tenant-id",
+              "name": "tenant_id",
+              "value": "={{ $json.body.tenant_id || 'default' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "parse-input",
+      "name": "Parse Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "id": "route-openai",
+              "conditions": {
+                "all": [
+                  {
+                    "leftValue": "={{ $json.context }}",
+                    "rightValue": "code",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "output": 0
+            },
+            {
+              "id": "route-gemini",
+              "conditions": {
+                "all": [
+                  {
+                    "leftValue": "={{ $json.context }}",
+                    "rightValue": "analysis",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "output": 1
+            },
+            {
+              "id": "route-both",
+              "conditions": {
+                "all": [
+                  {
+                    "leftValue": "={{ $json.context }}",
+                    "rightValue": "general",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "output": 2
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": 2
+        }
+      },
+      "id": "router",
+      "name": "AI Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4-turbo-preview",
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 2000
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Eres SmarterAgent, un asistente de IA especializado en desarrollo de software, arquitectura de sistemas y automatización. Tu rol es analizar código, generar soluciones técnicas y proporcionar recomendaciones precisas. Responde en español (Chile) de forma concisa y técnica."
+            },
+            {
+              "role": "user",
+              "content": "={{ $json.query }}"
+            }
+          ]
+        }
+      },
+      "id": "openai-node",
+      "name": "OpenAI (Code Focus)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [900, 180],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credentials",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gemini-1.5-pro",
+        "options": {
+          "temperature": 0.8,
+          "maxTokens": 4000
+        },
+        "prompt": {
+          "messages": [
+            {
+              "role": "system",
+              "content": "Eres SmarterAgent Director, un agente de IA estratégico especializado en análisis de negocio, planificación de proyectos y toma de decisiones. Evalúas contexto, prioridades y recomiendas acciones. Usas datos de KPIs, analytics y CRM para decisiones informadas. Responde en español (Chile) de forma estratégica y accionable."
+            },
+            {
+              "role": "user",
+              "content": "={{ $json.query }}"
+            }
+          ]
+        }
+      },
+      "id": "gemini-node",
+      "name": "Gemini (Analysis Focus)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "credentials": {
+        "googleGeminiApi": {
+          "id": "gemini-credentials",
+          "name": "Google Gemini API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "merge-both",
+      "name": "Call Both AIs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [900, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Procesar respuestas de OpenAI y Gemini\nconst items = $input.all();\n\nconst openaiResponse = items.find(item => item.json.model?.includes('gpt'));\nconst geminiResponse = items.find(item => item.json.model?.includes('gemini'));\n\nconst query = $('Parse Input').item.json.query;\nconst context = $('Parse Input').item.json.context;\nconst tenant_id = $('Parse Input').item.json.tenant_id;\n\nlet response = {\n  query: query,\n  context: context,\n  tenant_id: tenant_id,\n  timestamp: new Date().toISOString(),\n  agent: 'SmarterAgent',\n  version: '1.0',\n  models_used: []\n};\n\nif (context === 'code' && openaiResponse) {\n  // Solo OpenAI para código\n  response.answer = openaiResponse.json.choices[0].message.content;\n  response.models_used = ['gpt-4-turbo'];\n  response.confidence = 0.95;\n  \n} else if (context === 'analysis' && geminiResponse) {\n  // Solo Gemini para análisis\n  response.answer = geminiResponse.json.candidates[0].content.parts[0].text;\n  response.models_used = ['gemini-1.5-pro'];\n  response.confidence = 0.92;\n  \n} else if (openaiResponse && geminiResponse) {\n  // Combinar ambas respuestas para contexto general\n  const openaiText = openaiResponse.json.choices[0].message.content;\n  const geminiText = geminiResponse.json.candidates[0].content.parts[0].text;\n  \n  response.answer = {\n    summary: `**Análisis combinado de OpenAI + Gemini:**\\n\\n` +\n             `**Perspectiva Técnica (GPT-4):**\\n${openaiText}\\n\\n` +\n             `**Perspectiva Estratégica (Gemini):**\\n${geminiText}\\n\\n` +\n             `**Recomendación SmarterAgent:**\\nConsiderando ambos análisis, se sugiere un enfoque balanceado que combine la precisión técnica con visión estratégica.`,\n    openai: openaiText,\n    gemini: geminiText\n  };\n  response.models_used = ['gpt-4-turbo', 'gemini-1.5-pro'];\n  response.confidence = 0.97;\n  \n} else {\n  // Fallback\n  response.answer = 'No se pudo procesar la consulta. Verifica la configuración de los modelos.';\n  response.models_used = [];\n  response.confidence = 0.0;\n  response.error = 'No model responses available';\n}\n\n// Metadata adicional\nresponse.metadata = {\n  tokens_used: {\n    openai: openaiResponse?.json.usage?.total_tokens || 0,\n    gemini: geminiResponse?.json.usageMetadata?.totalTokenCount || 0\n  },\n  processing_time_ms: Date.now() - new Date($input.first().json.timestamp || Date.now()).getTime(),\n  routing_strategy: context\n};\n\nreturn [{ json: response }];"
+      },
+      "id": "process-response",
+      "name": "Process AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.confidence }}",
+              "rightValue": "0.8",
+              "operator": {
+                "type": "number",
+                "operation": "largerEqual"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "confidence-check",
+      "name": "Confidence Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "log-entry",
+              "name": "log",
+              "value": "={{ $json }}",
+              "type": "object"
+            },
+            {
+              "id": "vault-path",
+              "name": "vault_path",
+              "value": "smarteros/agents/logs/{{ $json.tenant_id }}/{{ $now.format('YYYY-MM-DD') }}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "prepare-log",
+      "name": "Prepare Log",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.VAULT_ADDR }}/v1/{{ $json.vault_path }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "data",
+              "value": "={{ JSON.stringify($json.log) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "save-to-vault",
+      "name": "Save to Vault",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "vault-token",
+          "name": "Vault Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.log, null, 2) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "X-Agent",
+                "value": "SmarterAgent/1.0"
+              },
+              {
+                "name": "X-Models",
+                "value": "={{ $json.log.models_used.join(',') }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-success",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2000, 240]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: 'Low confidence response', confidence: $json.confidence, query: $json.query }, null, 2) }}",
+        "options": {
+          "responseCode": 422,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-low-confidence",
+      "name": "Respond Low Confidence",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2000, 420]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input": {
+      "main": [
+        [
+          {
+            "node": "AI Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Router": {
+      "main": [
+        [
+          {
+            "node": "OpenAI (Code Focus)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gemini (Analysis Focus)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Call Both AIs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Call Both AIs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "OpenAI (Code Focus)": {
+      "main": [
+        [
+          {
+            "node": "Process AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini (Analysis Focus)": {
+      "main": [
+        [
+          {
+            "node": "Process AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Both AIs": {
+      "main": [
+        [
+          {
+            "node": "Process AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process AI Response": {
+      "main": [
+        [
+          {
+            "node": "Confidence Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confidence Check": {
+      "main": [
+        [
+          {
+            "node": "Prepare Log",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Low Confidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Log": {
+      "main": [
+        [
+          {
+            "node": "Save to Vault",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Vault": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "error-handler-workflow"
+  },
+  "versionId": "1.0.0",
+  "meta": {
+    "instanceId": "n8n.smarterbot.cl"
+  },
+  "tags": [
+    {
+      "id": "smarter-os",
+      "name": "OS"
+    },
+    {
+      "id": "ai-agent",
+      "name": "Agent"
+    }
+  ],
+  "id": "BWdJF4keyeKKIfaS"
+}

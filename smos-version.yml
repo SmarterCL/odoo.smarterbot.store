@@ -1,0 +1,133 @@
+# SmarterOS Version Control
+# Este archivo define la versión actual del OS y su historial
+
+current:
+  version: "0.1.0"
+  codename: "Genesis"
+  release_date: "2025-01-15"
+  status: "development"
+  commit: null  # Se actualiza automáticamente en CI/CD
+  
+  # Componentes incluidos en esta versión
+  components:
+    frontend:
+      app.smarterbot.cl: "0.1.0"        # Dashboard operativo (Clerk + Supabase)
+      chatwoot.smarterbot.cl: "2.10.1"  # Mensajería operativa
+      mkt.smarterbot.cl: "0.0.0"
+      store.smarterbot.cl: "0.0.0"
+      docs.smarterbot.cl: "0.0.0"
+    
+    backend:
+      n8n: "1.62.0"
+      supabase: "latest"
+      botpress: "12.26.0"
+      odoo: "17.0"
+      chatwoot: "3.13.0"
+    
+    infrastructure:
+      vps: "ubuntu-24.04"
+      dokploy: "0.9.0"
+      traefik: "2.11"
+      postgresql: "16"
+      redis: "7.2"
+
+  # Features disponibles
+  features:
+    - multi_tenant_support
+    - automated_backups
+    - mcp_integration
+    - codex_agents
+    - vercel_auto_deploy
+    - github_sync
+    
+  # Experimental features
+  experimental:
+    - ai_observability_metabase
+    - marketplace_skills
+    - multi_region_deployment
+
+# Historial de versiones
+history:
+  - version: "0.1.0"
+    codename: "Genesis"
+    date: "2025-01-15"
+    type: "initial"
+    changes:
+      - "Initial OS structure"
+      - "Monorepo setup (front, back, infra, tenants, system)"
+      - "Codex Agents activation"
+      - "MCP infrastructure (GitHub, Cloudflare, Hostinger, Shopify)"
+      - "N8N backup workflow"
+      - "Vercel auto-deploy"
+      - "Environment templates"
+      - "VS Code integration"
+    breaking_changes: []
+    migrations: []
+    rollback_safe: false  # No hay versión anterior
+
+# Próximas versiones
+roadmap:
+  - version: "0.2.0"
+    codename: "Foundation"
+    target_date: "2025-02-01"
+    planned_features:
+      - "Tenant creation automation"
+      - "Shopify multi-store integration"
+      - "Botpress bot templates"
+      - "Odoo multi-company setup"
+      - "DNS automation via Cloudflare MCP"
+    
+  - version: "0.3.0"
+    codename: "Scale"
+    target_date: "2025-03-01"
+    planned_features:
+      - "Marketplace (store.smarterbot.cl)"
+      - "Multi-region support"
+      - "Advanced monitoring (Metabase)"
+      - "Skills marketplace"
+      - "Tenant self-service portal"
+  
+  - version: "1.0.0"
+    codename: "Production"
+    target_date: "2025-06-01"
+    planned_features:
+      - "Production-ready security hardening"
+      - "SLA monitoring"
+      - "Disaster recovery"
+      - "High availability"
+      - "Performance optimization"
+
+# Compatibility matrix
+compatibility:
+  minimum_requirements:
+    nodejs: ">=20.0.0"
+    docker: ">=24.0.0"
+    git: ">=2.40.0"
+    codex: ">=1.0.0"
+  
+  supported_platforms:
+    - macos-arm64
+    - macos-x64
+    - linux-x64
+  
+  browser_support:
+    - chrome: ">=120"
+    - firefox: ">=120"
+    - safari: ">=17"
+    - edge: ">=120"
+
+# Deprecation notices
+deprecations:
+  - component: null
+    version: null
+    removal_version: null
+    alternative: null
+    reason: null
+
+# Migration guides
+migrations:
+  - from: null
+    to: "0.1.0"
+    guide: "docs/migrations/initial-setup.md"
+    automated: false
+    breaking: false

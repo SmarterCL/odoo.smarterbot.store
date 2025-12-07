@@ -1,0 +1,50 @@
+{
+    email admin@smarterbot.cl
+    admin off
+}
+
+# Odoo ERP
+odoo.smarterbot.cl {
+    reverse_proxy http://odoo-backend:8069
+    
+    header {
+        -Server
+        X-Frame-Options "SAMEORIGIN"
+    }
+    
+    log {
+        output file /var/log/caddy/odoo.log
+        level INFO
+    }
+}
+
+# API Gateway
+api.smarterbot.cl {
+    reverse_proxy http://smartapi:8000
+    
+    header {
+        -Server
+    }
+    
+    log {
+        output file /var/log/caddy/api.log
+    }
+}
+
+# Chatwoot
+chatwoot.smarterbot.store {
+    reverse_proxy http://chatwoot-web:3000
+    encode gzip
+}
+
+# n8n
+n8n.smarterbot.store {
+    reverse_proxy http://n8n:5678
+    encode gzip
+}
+
+# Botpress
+botpress.smarterbot.store {
+    reverse_proxy http://botpress:3000
+    encode gzip
+}

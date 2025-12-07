@@ -1,0 +1,9 @@
+{
+  "base_url": "https://chatwoot.smarterbot.cl",
+  "api_token": "REPLACE_TOKEN",
+  "account_id": 1,
+  "inbox_id": 1,
+  "default_language": "es",
+  "auto_reply_enabled": true,
+  "tags": ["lead", "support"]
+}

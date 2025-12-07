@@ -1,0 +1,153 @@
+# smarteros-specs/services/blogbowl.yml
+apiVersion: smarteros/v1
+kind: Service
+metadata:
+  name: blogbowl
+  displayName: BlogBowl
+  description: >
+    Modern content management and marketing platform.
+    AI-powered blog creation integrated with Nexa Runtime and SmarterOS.
+  tags:
+    - marketing
+    - cms
+    - content
+    - blog
+  repository: https://github.com/BlogBowl/BlogBowl
+spec:
+  category: marketing
+  tenantMode: multi-tenant
+
+  ingress:
+    enabled: true
+    host: mkt.smarterbot.cl
+    path: /
+    protocol: https
+
+  runtime:
+    type: docker
+    image: smarteros-blogbowl:latest
+    serviceName: blogbowl
+    containerPort: 3000
+    healthcheck:
+      path: /health
+      intervalSeconds: 30
+      timeoutSeconds: 10
+      retries: 3
+
+  network:
+    internalName: smarter-net
+    exposeInternallyAs: http://smarteros-blogbowl:3000
+    externalPort: 3002
+
+  dependencies:
+    - name: postgres
+      required: true
+    - name: redis
+      required: false
+    - name: nexa-runtime
+      required: false
+      description: AI content generation
+
+  config:
+    application:
+      name: BlogBowl
+      url: https://mkt.smarterbot.cl
+    features:
+      aiEnabled: true
+      commentsEnabled: true
+      analyticsEnabled: true
+    integration:
+      nexaUrl: https://ai.smarterbot.store/v1/chat/completions
+      apiUrl: https://api.smarterbot.cl
+      mcpUrl: https://mcp.smarterbot.cl
+
+  volumes:
+    - name: blogbowl-data
+      mountPath: /app/data
+      persistent: true
+    - name: blogbowl-uploads
+      mountPath: /app/uploads
+      persistent: true
+
+  environment:
+    - name: NODE_ENV
+      value: production
+    - name: PORT
+      value: "3000"
+    - name: APP_NAME
+      value: BlogBowl
+    - name: APP_URL
+      value: https://mkt.smarterbot.cl
+    - name: DATABASE_URL
+      secret: true
+      vaultPath: secret/data/blogbowl/database
+    - name: NEXT_PUBLIC_NEXA_URL
+      value: https://ai.smarterbot.store/v1/chat/completions
+    - name: ENABLE_AI_FEATURES
+      value: "true"
+
+  interfaces:
+    - name: web-ui
+      type: http
+      basePath: /
+      description: Main web interface for content management
+    
+    - name: api
+      type: http
+      basePath: /api
+      description: REST API for content operations
+    
+    - name: webhooks
+      type: http
+      basePath: /api/webhooks
+      description: Webhooks for integrations
+
+  monitoring:
+    metrics:
+      enabled: true
+      path: /api/metrics
+    
+    healthChecks:
+      - name: app-health
+        endpoint: /health
+        interval: 30s
+      - name: api-health
+        endpoint: /api/health
+        interval: 60s
+
+  backup:
+    enabled: true
+    schedule: "0 2 * * *"  # Daily at 2 AM
+    retention: 7  # days
+    targets:
+      - type: database
+        name: blogbowl
+      - type: volume
+        name: blogbowl-uploads
+
+  scaling:
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPU: 80
+    targetMemory: 80
+
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+
+  documentation:
+    repository: https://github.com/BlogBowl/BlogBowl
+    setupGuide: /root/specs/integrations/blogbowl-smarteros.md
+    examples:
+      - description: Create blog post with AI
+        code: |
+          POST /api/posts
+          {
+            "title": "Generated Content",
+            "useAI": true,
+            "prompt": "Write about AI in marketing"
+          }

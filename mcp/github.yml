@@ -1,0 +1,689 @@
+provider: "github"
+category: "core"
+tier: 1
+status: "active"
+priority: "critical"
+
+metadata:
+  name: "GitHub MCP Server"
+  description: "Official GitHub MCP server for repository management, issues, PRs, workflows, and code search"
+  version: "latest"
+  repository: "https://github.com/github/github-mcp-server"
+  documentation: "https://github.com/github/github-mcp-server/blob/main/README.md"
+  vendor: "GitHub"
+  license: "MIT"
+
+mcp_server:
+  name: "github-mcp-server"
+  repository: "https://github.com/github/github-mcp-server"
+  docker_image: "ghcr.io/github/github-mcp-server:latest"
+  binary_releases: true
+  platforms:
+    - linux
+    - darwin
+    - windows
+  
+  installation_methods:
+    docker:
+      command: "docker"
+      args:
+        - "run"
+        - "-i"
+        - "--rm"
+        - "-e"
+        - "GITHUB_PERSONAL_ACCESS_TOKEN"
+        - "ghcr.io/github/github-mcp-server"
+    
+    remote_server:
+      type: "http"
+      url: "https://api.githubcopilot.com/mcp/"
+      auth: "oauth"
+      oauth_url: "https://github.com/login/oauth/authorize"
+    
+    binary:
+      download_url: "https://github.com/github/github-mcp-server/releases/latest"
+
+auth:
+  method: "bearer-token"
+  token_name: "GITHUB_PERSONAL_ACCESS_TOKEN"
+  vault_path: "smarteros/mcp/github"
+  secrets:
+    - name: "github_token"
+      env_var: "GITHUB_PERSONAL_ACCESS_TOKEN"
+      required: true
+      description: "GitHub Personal Access Token with repo, read:org, read:packages scopes"
+  
+  scopes_required:
+    - "repo"
+    - "read:org"
+    - "read:packages"
+    - "workflow"
+    - "read:user"
+  
+  scopes_optional:
+    - "write:packages"
+    - "delete:packages"
+    - "admin:org"
+
+enterprise_support:
+  github_enterprise_server: true
+  github_enterprise_cloud_ghe: true
+  configuration:
+    env_var: "GITHUB_HOST"
+    flag: "--gh-host"
+    examples:
+      - "https://github.enterprise.com"
+      - "https://octocorp.ghe.com"
+
+capabilities:
+  # Repository Management
+  - tool_name: "get_file_contents"
+    category: "repository"
+    description: "Get the contents of a file or directory from a GitHub repository"
+    parameters:
+      - name: "owner"
+        type: "string"
+        required: true
+      - name: "repo"
+        type: "string"
+        required: true
+      - name: "path"
+        type: "string"
+        default: "/"
+      - name: "ref"
+        type: "string"
+        required: false
+      - name: "sha"
+        type: "string"
+        required: false
+    use_cases:
+      - "Read source code files"
+      - "Browse repository structure"
+      - "View documentation"
+  
+  - tool_name: "search_repositories"
+    category: "search"
+    description: "Search for repositories by name, description, readme, topics, or other metadata"
+    parameters:
+      - name: "query"
+        type: "string"
+        required: true
+        examples:
+          - "machine learning in:name stars:>1000 language:python"
+          - "topic:react"
+          - "user:facebook"
+      - name: "sort"
+        type: "string"
+        enum: ["stars", "forks", "help-wanted-issues", "updated"]
+      - name: "order"
+        type: "string"
+        enum: ["asc", "desc"]
+      - name: "page"
+        type: "number"
+        minimum: 1
+      - name: "perPage"
+        type: "number"
+        minimum: 1
+        maximum: 100
+      - name: "minimal_output"
+        type: "boolean"
+        default: true
+    use_cases:
+      - "Find similar projects"
+      - "Discover popular repositories"
+      - "Research technology stacks"
+  
+  - tool_name: "search_code"
+    category: "search"
+    description: "Search code across all GitHub repositories using GitHub's search engine"
+    parameters:
+      - name: "query"
+        type: "string"
+        required: true
+        examples:
+          - "content:Skill language:Java org:github"
+          - "NOT is:archived language:Python OR language:go"
+          - "repo:github/github-mcp-server"
+      - name: "sort"
+        type: "string"
+        enum: ["indexed"]
+      - name: "order"
+        type: "string"
+        enum: ["asc", "desc"]
+    use_cases:
+      - "Find code patterns"
+      - "Locate function implementations"
+      - "Research API usage"
+  
+  - tool_name: "list_commits"
+    category: "repository"
+    description: "Get list of commits of a branch in a GitHub repository"
+    parameters:
+      - name: "owner"
+        type: "string"
+        required: true
+      - name: "repo"
+        type: "string"
+        required: true
+      - name: "sha"
+        type: "string"
+        description: "Commit SHA, branch or tag name"
+      - name: "author"
+        type: "string"
+        description: "Author username or email"
+      - name: "page"
+        type: "number"
+      - name: "perPage"
+        type: "number"
+        minimum: 1
+        maximum: 100
+    use_cases:
+      - "Review commit history"
+      - "Track changes by author"
+      - "Analyze development activity"
+  
+  - tool_name: "get_commit"
+    category: "repository"
+    description: "Get details for a specific commit including diffs and stats"
+    parameters:
+      - name: "owner"
+        type: "string"
+        required: true
+      - name: "repo"
+        type: "string"
+        required: true
+      - name: "sha"
+        type: "string"
+        required: true
+      - name: "include_diff"
+        type: "boolean"
+        default: true
+    use_cases:
+      - "Review code changes"
+      - "Analyze commit impact"
+      - "Code review assistance"
+  
+  - tool_name: "list_branches"
+    category: "repository"
+    description: "List branches in a GitHub repository"
+    parameters:
+      - name: "owner"
+        type: "string"
+        required: true
+      - name: "repo"
+        type: "string"
+        required: true
+      - name: "page"
+        type: "number"
+      - name: "perPage"
+        type: "number"
+    use_cases:
+      - "View available branches"
+      - "Check branch status"
+      - "Branch management"
+
+  # Issues Management
+  - tool_name: "list_issues"
+    category: "issues"
+    description: "List issues in a GitHub repository with filtering and sorting"
+    parameters:
+      - name: "owner"
+        type: "string"
+        required: true
+      - name: "repo"
+        type: "string"
+        required: true
+      - name: "state"
+        type: "string"
+        enum: ["OPEN", "CLOSED"]
+      - name: "labels"
+        type: "array"
+      - name: "orderBy"
+        type: "string"
+        enum: ["CREATED_AT", "UPDATED_AT", "COMMENTS"]
+      - name: "direction"
+        type: "string"
+        enum: ["ASC", "DESC"]
+      - name: "since"
+        type: "string"
+        description: "ISO 8601 timestamp"
+      - name: "after"
+        type: "string"
+        description: "Cursor for pagination"
+      - name: "perPage"
+        type: "number"
+    use_cases:
+      - "Track bugs"
+      - "Manage feature requests"
+      - "Project planning"
+  
+  - tool_name: "issue_read"
+    category: "issues"
+    description: "Get detailed information about a specific issue"
+    parameters:
+      - name: "owner"
+        type: "string"
+        required: true
+      - name: "repo"
+        type: "string"
+        required: true
+      - name: "issue_number"
+        type: "number"
+        required: true
+      - name: "method"
+        type: "string"
+        required: true
+        enum: ["get", "get_comments", "get_sub_issues", "get_labels"]
+    use_cases:
+      - "Issue investigation"
+      - "Comment analysis"
+      - "Label management"
+  
+  - tool_name: "search_issues"
+    category: "search"
+    description: "Search for issues across repositories"
+    parameters:
+      - name: "query"
+        type: "string"
+        required: true
+      - name: "owner"
+        type: "string"
+      - name: "repo"
+        type: "string"
+      - name: "sort"
+        type: "string"
+        enum: ["comments", "reactions", "reactions-+1", "reactions--1", "created", "updated", "interactions"]
+      - name: "order"
+        type: "string"
+        enum: ["asc", "desc"]
+    use_cases:
+      - "Find related issues"
+      - "Track issue trends"
+      - "Issue analytics"
+
+  # Pull Requests
+  - tool_name: "list_pull_requests"
+    category: "pull_requests"
+    description: "List pull requests in a repository"
+    parameters:
+      - name: "owner"
+        type: "string"
+        required: true
+      - name: "repo"
+        type: "string"
+        required: true
+      - name: "state"
+        type: "string"
+        enum: ["open", "closed", "all"]
+      - name: "base"
+        type: "string"
+      - name: "head"
+        type: "string"
+      - name: "sort"
+        type: "string"
+        enum: ["created", "updated", "popularity", "long-running"]
+      - name: "direction"
+        type: "string"
+        enum: ["asc", "desc"]
+    use_cases:
+      - "Code review queue"
+      - "PR management"
+      - "Merge planning"
+  
+  - tool_name: "pull_request_read"
+    category: "pull_requests"
+    description: "Get detailed information about a pull request"
+    parameters:
+      - name: "owner"
+        type: "string"
+        required: true
+      - name: "repo"
+        type: "string"
+        required: true
+      - name: "pullNumber"
+        type: "number"
+        required: true
+      - name: "method"
+        type: "string"
+        required: true
+        enum: ["get", "get_diff", "get_status", "get_files", "get_review_comments", "get_reviews", "get_comments"]
+    use_cases:
+      - "Code review"
+      - "Diff analysis"
+      - "PR status tracking"
+  
+  - tool_name: "search_pull_requests"
+    category: "search"
+    description: "Search for pull requests across repositories"
+    parameters:
+      - name: "query"
+        type: "string"
+        required: true
+      - name: "owner"
+        type: "string"
+      - name: "repo"
+        type: "string"
+      - name: "sort"
+        type: "string"
+      - name: "order"
+        type: "string"
+    use_cases:
+      - "Find PRs by author"
+      - "Track PR status"
+      - "Review analytics"
+
+  # Workflows & CI/CD
+  - tool_name: "list_workflows"
+    category: "workflows"
+    description: "List workflows in a repository"
+    parameters:
+      - name: "owner"
+        type: "string"
+        required: true
+      - name: "repo"
+        type: "string"
+        required: true
+      - name: "page"
+        type: "number"
+      - name: "perPage"
+        type: "number"
+    use_cases:
+      - "CI/CD management"
+      - "Workflow monitoring"
+      - "Automation tracking"
+  
+  - tool_name: "list_workflow_runs"
+    category: "workflows"
+    description: "List workflow runs for a specific workflow"
+    parameters:
+      - name: "owner"
+        type: "string"
+        required: true
+      - name: "repo"
+        type: "string"
+        required: true
+      - name: "workflow_id"
+        type: "string"
+        required: true
+      - name: "branch"
+        type: "string"
+      - name: "event"
+        type: "string"
+      - name: "status"
+        type: "string"
+        enum: ["queued", "in_progress", "completed", "requested", "waiting"]
+      - name: "actor"
+        type: "string"
+    use_cases:
+      - "Build status monitoring"
+      - "Deployment tracking"
+      - "CI/CD analytics"
+  
+  - tool_name: "get_workflow_run"
+    category: "workflows"
+    description: "Get details of a specific workflow run"
+    parameters:
+      - name: "owner"
+        type: "string"
+        required: true
+      - name: "repo"
+        type: "string"
+        required: true
+      - name: "run_id"
+        type: "number"
+        required: true
+    use_cases:
+      - "Debug build failures"
+      - "Analyze run time"
+      - "Audit deployments"
+  
+  - tool_name: "get_job_logs"
+    category: "workflows"
+    description: "Download logs for workflow jobs, optimized for failed jobs"
+    parameters:
+      - name: "owner"
+        type: "string"
+        required: true
+      - name: "repo"
+        type: "string"
+        required: true
+      - name: "job_id"
+        type: "number"
+      - name: "run_id"
+        type: "number"
+      - name: "failed_only"
+        type: "boolean"
+        description: "Get logs for all failed jobs in run_id"
+      - name: "return_content"
+        type: "boolean"
+      - name: "tail_lines"
+        type: "number"
+        default: 500
+    use_cases:
+      - "Debug CI failures"
+      - "Error analysis"
+      - "Build troubleshooting"
+
+  # Search & Discovery
+  - tool_name: "search_users"
+    category: "search"
+    description: "Search for GitHub users by username, name, or profile info"
+    parameters:
+      - name: "query"
+        type: "string"
+        required: true
+        examples:
+          - "john smith"
+          - "location:seattle"
+          - "followers:>100"
+      - name: "sort"
+        type: "string"
+        enum: ["followers", "repositories", "joined"]
+      - name: "order"
+        type: "string"
+        enum: ["asc", "desc"]
+    use_cases:
+      - "Find collaborators"
+      - "Research developers"
+      - "Team discovery"
+  
+  - tool_name: "web_search"
+    category: "search"
+    description: "AI-powered web search with contextual answers and citations"
+    parameters:
+      - name: "query"
+        type: "string"
+        required: true
+    use_cases:
+      - "Research latest features"
+      - "Find documentation"
+      - "Technical Q&A"
+
+agent_usage:
+  executor-codex:
+    primary: true
+    permissions:
+      - read_repositories
+      - read_issues
+      - read_pull_requests
+      - read_workflows
+      - search_code
+    use_cases:
+      - "Repository analysis for deployment decisions"
+      - "CI/CD workflow monitoring"
+      - "Code search for infrastructure patterns"
+      - "Branch and commit verification"
+      - "Build log analysis"
+    
+  writer-copilot:
+    primary: false
+    permissions:
+      - read_repositories
+      - read_issues
+      - search_code
+    use_cases:
+      - "Documentation research"
+      - "Issue documentation"
+      - "Code example gathering"
+      - "README generation assistance"
+    
+  director-gemini:
+    primary: true
+    permissions:
+      - read_repositories
+      - read_issues
+      - read_pull_requests
+      - search_repositories
+      - search_users
+    use_cases:
+      - "Project analytics"
+      - "Team activity analysis"
+      - "Issue trend analysis"
+      - "Repository recommendations"
+      - "Development insights"
+
+configuration_examples:
+  docker_local:
+    description: "Run GitHub MCP locally with Docker"
+    config:
+      github:
+        command: "docker"
+        args:
+          - "run"
+          - "-i"
+          - "--rm"
+          - "-e"
+          - "GITHUB_PERSONAL_ACCESS_TOKEN"
+          - "ghcr.io/github/github-mcp-server"
+        env:
+          GITHUB_PERSONAL_ACCESS_TOKEN: "${VAULT:smarteros/mcp/github#github_token}"
+  
+  remote_oauth:
+    description: "Use remote GitHub MCP with OAuth (VS Code)"
+    config:
+      github:
+        type: "http"
+        url: "https://api.githubcopilot.com/mcp/"
+  
+  remote_pat:
+    description: "Use remote GitHub MCP with PAT"
+    config:
+      github:
+        type: "http"
+        url: "https://api.githubcopilot.com/mcp/"
+        headers:
+          Authorization: "Bearer ${VAULT:smarteros/mcp/github#github_token}"
+  
+  enterprise_cloud:
+    description: "GitHub Enterprise Cloud with data residency"
+    config:
+      github:
+        type: "http"
+        url: "https://copilot-api.octocorp.ghe.com/mcp"
+        headers:
+          Authorization: "Bearer ${VAULT:smarteros/mcp/github#github_token}"
+
+toolsets:
+  default:
+    description: "Default toolset when none specified"
+    tools:
+      - "get_file_contents"
+      - "search_repositories"
+      - "search_code"
+      - "list_commits"
+      - "get_commit"
+      - "list_branches"
+      - "list_issues"
+      - "issue_read"
+      - "list_pull_requests"
+      - "pull_request_read"
+  
+  read_only:
+    description: "Read-only operations, safe for all agents"
+    tools:
+      - "get_file_contents"
+      - "list_commits"
+      - "list_branches"
+      - "list_issues"
+      - "list_pull_requests"
+      - "search_*"
+  
+  ci_cd:
+    description: "CI/CD and workflow monitoring"
+    tools:
+      - "list_workflows"
+      - "list_workflow_runs"
+      - "get_workflow_run"
+      - "get_job_logs"
+  
+  full:
+    description: "All available tools"
+    tools:
+      - "*"
+
+deployment:
+  smarteros:
+    tier: 1
+    priority: "critical"
+    status: "active"
+    endpoint: "http://localhost:3001"
+    proxy_enabled: true
+    proxy_type: "mcp-proxy"
+    proxy_config:
+      port: 3001
+      stdio_command: "docker"
+      stdio_args:
+        - "run"
+        - "-i"
+        - "--rm"
+        - "-e"
+        - "GITHUB_PERSONAL_ACCESS_TOKEN"
+        - "ghcr.io/github/github-mcp-server"
+    
+    monitoring:
+      health_check: "http://localhost:3001/health"
+      metrics: true
+      logs: "docker logs mcp-github-proxy"
+    
+    vault_integration:
+      path: "smarteros/mcp/github"
+      secrets:
+        - "github_token"
+      rotation_days: 90
+
+limitations:
+  rate_limits:
+    authenticated: "5000 requests/hour"
+    search: "30 requests/minute"
+    graphql: "5000 points/hour"
+  
+  known_issues:
+    - "Large file contents may be truncated"
+    - "Some Enterprise features require admin permissions"
+    - "Search results limited to 1000 items max"
+  
+  recommendations:
+    - "Use fine-grained PATs for better security"
+    - "Enable only required scopes"
+    - "Monitor rate limit usage"
+    - "Use remote server for OAuth support"
+
+documentation:
+  official: "https://github.com/github/github-mcp-server"
+  installation: "https://github.com/github/github-mcp-server/blob/main/docs/installation-guides/"
+  policies: "https://github.com/github/github-mcp-server/blob/main/docs/policies-and-governance.md"
+  remote_server: "https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md"
+
+tags:
+  - "github"
+  - "repository"
+  - "issues"
+  - "pull-requests"
+  - "workflows"
+  - "ci-cd"
+  - "code-search"
+  - "version-control"
+  - "collaboration"
+
+last_updated: "2025-11-19"
+spec_version: "1.0.0"

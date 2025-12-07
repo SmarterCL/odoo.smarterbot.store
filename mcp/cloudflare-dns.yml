@@ -1,0 +1,298 @@
+# 🌐 Cloudflare DNS Analytics MCP Server
+
+version: "1.0"
+source: "official"
+repository: "https://github.com/cloudflare/mcp-server-cloudflare"
+updated: "2025-11-16"
+
+metadata:
+  name: "Cloudflare DNS Analytics MCP Server"
+  category: "infrastructure"
+  tier: 5
+  provider: "cloudflare"
+  app: "dns-analytics"
+  deployment: "remote"
+  endpoint: "https://dns-analytics.mcp.cloudflare.com/mcp"
+
+description: |
+  Servidor MCP oficial de Cloudflare para gestión de DNS y analytics.
+  
+  Permite:
+  - Listar zonas DNS
+  - Configurar registros DNS (A, AAAA, CNAME, MX, TXT, etc.)
+  - Obtener reportes de tráfico DNS
+  - Optimizar configuraciones DNS
+  - Análisis de performance
+
+authentication:
+  methods:
+    - oauth:
+        flow: "authorization_code"
+        scopes:
+          - "account:read"
+          - "zone:read"
+          - "dns_records:read"
+          - "dns_records:edit"
+        
+        setup:
+          cloudflare_employees: |
+            wrangler secret put CLOUDFLARE_CLIENT_ID
+            wrangler secret put CLOUDFLARE_CLIENT_SECRET
+        
+        oauth_flow: |
+          Browser OAuth flow opens automatically when connecting via MCP client.
+          User authorizes access to Cloudflare account.
+    
+    - api_token:
+        recommended: true
+        description: "API Token with DNS Edit permissions"
+        
+        setup: |
+          1. Go to Cloudflare Dashboard → My Profile → API Tokens
+          2. Create Token with permissions:
+             - Zone:Zone:Read
+             - Zone:DNS:Edit
+          3. Copy token and store in Vault or environment
+        
+        configuration:
+          env_vars:
+            - DEV_DISABLE_OAUTH: "true"
+            - DEV_CLOUDFLARE_API_TOKEN: "your_api_token"
+            - DEV_CLOUDFLARE_EMAIL: "your_cloudflare_email"
+          
+          vault_path: "smarteros/mcp/cloudflare"
+          vault_keys:
+            - api_token
+            - email
+            - zone_id (optional, for default zone)
+
+connection:
+  remote_mcp:
+    via: "mcp-remote"
+    npm_package: "mcp-remote"
+    
+    config_example: |
+      {
+        "mcpServers": {
+          "cloudflare-dns": {
+            "command": "npx",
+            "args": ["mcp-remote", "https://dns-analytics.mcp.cloudflare.com/mcp"]
+          }
+        }
+      }
+  
+  local_development:
+    setup: |
+      1. Clone repo: git clone https://github.com/cloudflare/mcp-server-cloudflare
+      2. cd apps/dns-analytics
+      3. Create .dev.vars with API token
+      4. npx wrangler dev
+      5. Connect to http://localhost:8976/mcp
+
+tools:
+  dns_management:
+    - name: "zones_list"
+      description: "List all zones under Cloudflare account"
+      
+    - name: "dns_records_list"
+      description: "List DNS records for a zone"
+      parameters:
+        - zone_id: "Zone identifier"
+      
+    - name: "dns_records_create"
+      description: "Create a new DNS record"
+      parameters:
+        - zone_id: "Zone identifier"
+        - type: "Record type (A, AAAA, CNAME, MX, TXT, etc.)"
+        - name: "DNS record name (subdomain)"
+        - content: "Record content (IP, target, etc.)"
+        - ttl: "Time to live (1 = auto)"
+        - proxied: "Whether to proxy through Cloudflare (true/false)"
+      
+    - name: "dns_records_update"
+      description: "Update existing DNS record"
+      parameters:
+        - zone_id: "Zone identifier"
+        - record_id: "DNS record identifier"
+        - type: "Record type"
+        - name: "DNS record name"
+        - content: "New content"
+        - ttl: "Time to live"
+        - proxied: "Proxy status"
+      
+    - name: "dns_records_delete"
+      description: "Delete a DNS record"
+      parameters:
+        - zone_id: "Zone identifier"
+        - record_id: "DNS record identifier"
+  
+  analytics:
+    - name: "dns_analytics_report"
+      description: "Fetch DNS analytics report for a zone"
+      parameters:
+        - zone_id: "Zone identifier"
+        - since: "Start time (optional)"
+        - until: "End time (optional)"
+      
+    - name: "dns_settings_get"
+      description: "Get DNS settings for account"
+      
+    - name: "dns_optimization_suggest"
+      description: "Get optimization suggestions based on DNS report"
+
+prompt_examples:
+  - "List zones under my Cloudflare account"
+  - "Show me DNS records for smarterbot.cl"
+  - "Create an A record for mkt.smarterbot.cl pointing to 216.198.79.1"
+  - "Create a CNAME record for call.smarterbot.cl pointing to smarterbot.cl"
+  - "Update DNS record [record_id] to enable proxy"
+  - "Delete DNS record [record_id] from zone [zone_id]"
+  - "Show me DNS traffic for smarterbot.cl in the last 7 days"
+  - "What are the DNS settings for my account?"
+  - "How can I optimize my DNS based on the analytics report?"
+
+use_cases:
+  create_subdomain_records:
+    description: "Crear registros DNS para nuevos subdominios"
+    steps:
+      - "zones_list para obtener zone_id de smarterbot.cl"
+      - "dns_records_create con tipo A/CNAME para crear registro"
+      - "dns_records_list para verificar creación"
+    
+    example: |
+      1. Listar zonas: zones_list
+      2. Crear A record:
+         zone_id: "abc123..."
+         type: "A"
+         name: "mkt"
+         content: "216.198.79.1"
+         ttl: 1 (auto)
+         proxied: true
+  
+  update_dns_for_migration:
+    description: "Actualizar registros DNS durante migraciones"
+    steps:
+      - "dns_records_list para encontrar registros existentes"
+      - "dns_records_update para cambiar IP/target"
+      - "dns_analytics_report para monitorear tráfico post-cambio"
+  
+  dns_health_check:
+    description: "Verificar salud y optimización de DNS"
+    steps:
+      - "dns_analytics_report para obtener métricas"
+      - "dns_settings_get para revisar configuración"
+      - "dns_optimization_suggest para recomendaciones"
+
+integration:
+  vault:
+    path: "smarteros/mcp/cloudflare"
+    keys:
+      api_token:
+        description: "Cloudflare API Token with DNS Edit permissions"
+        required: true
+      
+      email:
+        description: "Cloudflare account email"
+        required: true
+      
+      zone_id:
+        description: "Default zone ID (smarterbot.cl)"
+        required: false
+        usage: "Para comandos que no especifiquen zone_id"
+    
+    policy: "mcp-cloudflare-dns-read"
+    policy_file: "vault/policies/mcp-cloudflare-dns-read.hcl"
+  
+  agents:
+    primary: "executor-codex"
+    secondary: ["director-gemini"]
+    
+    permissions:
+      codex:
+        read: ["zones", "dns_records", "analytics"]
+        write: ["dns_records_create", "dns_records_update", "dns_records_delete"]
+        use_cases:
+          - "Automatic subdomain creation for new services"
+          - "DNS updates during deployments"
+          - "Migration of DNS records"
+      
+      gemini:
+        read: ["zones", "dns_records", "analytics", "optimization"]
+        write: []
+        use_cases:
+          - "DNS health analysis"
+          - "Optimization recommendations"
+          - "Traffic pattern analysis"
+
+rate_limits:
+  cloudflare_api: "1200 requests per 5 minutes"
+  mcp_server: "Unlimited (rate limited by Cloudflare API)"
+  
+  best_practices:
+    - "Batch DNS operations when possible"
+    - "Cache zone_id lookups"
+    - "Use TTL=1 for auto TTL management"
+
+deployment:
+  production:
+    url: "https://dns-analytics.mcp.cloudflare.com/mcp"
+    status: "operational"
+    maintained_by: "Cloudflare"
+  
+  self_hosted:
+    supported: true
+    repository: "https://github.com/cloudflare/mcp-server-cloudflare"
+    deployment_guide: "apps/dns-analytics/CONTRIBUTING.md"
+    
+    requirements:
+      - "Cloudflare Workers account"
+      - "Wrangler CLI"
+      - "KV namespace for OAuth"
+      - "Client ID/Secret (employees) or API Token (external)"
+
+testing:
+  inspector:
+    command: "npx @modelcontextprotocol/inspector@latest"
+    connect_to: "https://dns-analytics.mcp.cloudflare.com/mcp"
+  
+  local:
+    command: "npx wrangler dev"
+    connect_to: "http://localhost:8976/mcp"
+
+security:
+  recommendations:
+    - "Use API tokens with minimal required permissions (Zone:DNS:Edit only)"
+    - "Store tokens in Vault, never in git"
+    - "Enable audit logging for DNS changes"
+    - "Use proxied=true for web services to hide origin IP"
+    - "Implement approval workflow for production DNS changes"
+  
+  vault_policy_example: |
+    path "smarteros/mcp/cloudflare" {
+      capabilities = ["read"]
+    }
+
+notes: |
+  Cloudflare MCP Server oficial con soporte para:
+  - OAuth (Cloudflare employees)
+  - API Token (external contributors y producción)
+  - Remote MCP via mcp-remote
+  - Local development via Wrangler
+  
+  Ventajas sobre API directa:
+  - Interfaz conversacional natural
+  - Validación automática de parámetros
+  - Optimizaciones y sugerencias built-in
+  - Integración nativa con AI agents
+  
+  Para uso en SmarterOS:
+  - Configurar con API token en Vault
+  - Asignar a executor-codex para DNS automation
+  - Usar para crear subdominios (mkt, call, fulldaygo)
+  - Integrar con workflows de deployment
+
+related_mcps:
+  - "cloudflare-workers-observability"
+  - "cloudflare-workers-bindings"
+  - "cloudflare-radar"
+  - "cloudflare-ai-gateway"

@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  smarterbolt-lab:
+    build:
+      context: .
+      dockerfile: docker/BoltLab.Dockerfile
+    container_name: smarterbolt-lab
+    hostname: bolt-lab
+    
+    # Volume mounts (bind host directories)
+    volumes:
+      - ./specs:/root/smarteros/specs:ro        # Read-only specs
+      - ./scripts:/root/smarteros/scripts:ro    # Read-only scripts
+      - ./docs:/root/smarteros/docs:rw          # Read-write docs output
+    
+    # Environment variables
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=gpt-4-turbo-preview
+      - PYTHONUNBUFFERED=1
+      - TZ=America/Santiago
+    
+    # Keep container running (for manual execution)
+    stdin_open: true
+    tty: true
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    
+    # Labels for identification
+    labels:
+      - "com.smarteros.service=bolt-lab"
+      - "com.smarteros.version=1.0.0"
+      - "com.smarteros.description=AI Documentation Generator"
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  default:
+    name: smarteros
+    external: false

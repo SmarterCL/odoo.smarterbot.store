@@ -1,0 +1,508 @@
+# E2E FLOW: Venta Asistida con Shopify
+# Patrón: Chatwoot → n8n → Botpress → MCP → n8n → Chatwoot
+# Multi-tenant: Opción A (shared services, workspace isolation)
+
+flow_id: "e2e_shopify_sales"
+version: "1.0.0"
+status: "production"
+priority: "high"
+latency_target: "< 5s"
+success_rate_target: "> 95%"
+
+# =============================================================================
+# DESCRIPCIÓN
+# =============================================================================
+
+description: |
+  Cliente pregunta por productos vía WhatsApp → Botpress identifica intención
+  → MCP consulta Shopify → se construye respuesta con productos reales
+  → Cliente recibe links de compra directos
+
+use_case: |
+  Cliente: "¿Tienen zapatillas talla 42?"
+  Sistema: "Encontré estas zapatillas en talla 42:
+           1) Zapatilla Running Azul — Link: https://...
+           ¿Quieres que te prepare el carrito de compra?"
+
+# =============================================================================
+# ARQUITECTURA MULTI-TENANT
+# =============================================================================
+
+multi_tenant:
+  isolation_level: "workspace"  # Botpress workspace per tenant
+  tenant_resolution: "chatwoot_account_id"  # account.id → tenant_id
+  vault_paths:
+    - "secret/tenant/<TENANT_ID>/chatwoot/api_token"
+    - "secret/tenant/<TENANT_ID>/chatwoot/hmac_secret"
+    - "secret/tenant/<TENANT_ID>/botpress/api_key"
+    - "secret/tenant/<TENANT_ID>/botpress/workspace_id"
+    - "secret/tenant/<TENANT_ID>/botpress/bot_id_sales"
+    - "secret/tenant/<TENANT_ID>/shopify/admin_token"
+    - "secret/tenant/<TENANT_ID>/shopify/store_domain"
+
+headers_standard:
+  - name: "X-SMOS-Tenant-ID"
+    description: "ID del tenant (RUT o UUID interno)"
+    required: true
+  - name: "X-SMOS-Conversation-ID"
+    description: "ID conversación Chatwoot"
+    required: true
+  - name: "X-SMOS-Channel"
+    description: "whatsapp | webwidget | email"
+    required: true
+  - name: "X-Chatwoot-Signature"
+    description: "HMAC SHA256 para validar webhook"
+    required: true
+  - name: "X-SMOS-User-Role"
+    description: "end_user | agent | system"
+    required: true
+
+# =============================================================================
+# PASO 1: MENSAJE ENTRA POR WHATSAPP
+# =============================================================================
+
+step_1_whatsapp_incoming:
+  trigger: "WhatsApp message sent by customer"
+  provider: "Twilio / WhatsApp Business API"
+  destination: "Chatwoot inbox (tenant-specific)"
+  
+  webhook_fired:
+    url: "https://n8n.smarterbot.cl/webhook/chatwoot-events"
+    method: "POST"
+    headers:
+      - "Content-Type: application/json"
+      - "X-Chatwoot-Signature: <HMAC_SHA256>"
+    
+    payload_example: |
+      {
+        "event": "message_created",
+        "message_type": "incoming",
+        "account": { "id": 1 },
+        "conversation": { "id": 12345, "inbox_id": 7 },
+        "sender": {
+          "id": 9988,
+          "name": "Juan Pérez",
+          "phone_number": "+56979540471",
+          "email": null
+        },
+        "content": "¿Tienen zapatillas talla 42?",
+        "attachments": [],
+        "created_at": "2025-11-17T14:30:00Z"
+      }
+
+# =============================================================================
+# PASO 2: n8n VALIDA + ENRIQUECE + LLAMA BOTPRESS
+# =============================================================================
+
+step_2_n8n_processing:
+  workflow_name: "chatwoot-events-router"
+  workflow_file: "n8n-workflows/chatwoot-events-router.json"
+  
+  nodes:
+    - node_1_webhook:
+        type: "n8n-nodes-base.webhook"
+        name: "Chatwoot Webhook Receiver"
+        path: "/webhook/chatwoot-events"
+        method: "POST"
+        response_mode: "onReceived"
+        
+    - node_2_validate_hmac:
+        type: "n8n-nodes-base.function"
+        name: "Validate HMAC Signature"
+        code: |
+          const crypto = require('crypto');
+          const signature = $headers['x-chatwoot-signature'];
+          const payload = JSON.stringify($input.item.json);
+          
+          // Obtener HMAC secret de Vault (por tenant)
+          const tenantId = $input.item.json.account.id;
+          const hmacSecret = await vault.read(`secret/tenant/${tenantId}/chatwoot/hmac_secret`);
+          
+          const expectedSignature = crypto
+            .createHmac('sha256', hmacSecret)
+            .update(payload)
+            .digest('hex');
+          
+          if (signature !== expectedSignature) {
+            throw new Error('Invalid HMAC signature');
+          }
+          
+          return $input.item;
+    
+    - node_3_resolve_tenant:
+        type: "n8n-nodes-base.function"
+        name: "Resolve Tenant ID"
+        code: |
+          const accountId = $input.item.json.account.id;
+          
+          // Map account.id → tenant_id (desde Vault o Supabase)
+          const tenantId = await resolveTenantId(accountId);
+          
+          // Cargar credenciales del tenant
+          const botpressApiKey = await vault.read(`secret/tenant/${tenantId}/botpress/api_key`);
+          const botpressWorkspaceId = await vault.read(`secret/tenant/${tenantId}/botpress/workspace_id`);
+          const botpressBotIdSales = await vault.read(`secret/tenant/${tenantId}/botpress/bot_id_sales`);
+          const shopifyAdminToken = await vault.read(`secret/tenant/${tenantId}/shopify/admin_token`);
+          const shopifyStoreDomain = await vault.read(`secret/tenant/${tenantId}/shopify/store_domain`);
+          
+          return {
+            ...item,
+            tenant_id: tenantId,
+            credentials: {
+              botpress_api_key: botpressApiKey,
+              botpress_workspace_id: botpressWorkspaceId,
+              botpress_bot_id_sales: botpressBotIdSales,
+              shopify_admin_token: shopifyAdminToken,
+              shopify_store_domain: shopifyStoreDomain
+            }
+          };
+    
+    - node_4_build_botpress_request:
+        type: "n8n-nodes-base.set"
+        name: "Build Botpress Request"
+        values:
+          tenant_id: "={{ $json.tenant_id }}"
+          channel: "whatsapp"
+          conversation_id: "={{ $json.conversation.id }}"
+          contact:
+            id: "={{ $json.sender.id }}"
+            name: "={{ $json.sender.name }}"
+            phone: "={{ $json.sender.phone_number }}"
+            email: "={{ $json.sender.email }}"
+          message:
+            id: "={{ $json.id }}"
+            type: "text"
+            content: "={{ $json.content }}"
+            attachments: "={{ $json.attachments }}"
+          context:
+            language: "es-CL"
+            shopify_connected: true
+            shopify_store_domain: "={{ $json.credentials.shopify_store_domain }}"
+    
+    - node_5_call_botpress:
+        type: "n8n-nodes-base.httpRequest"
+        name: "Call Botpress Sales Agent"
+        method: "POST"
+        url: "https://botpress.smarterbot.cl/api/v1/workspaces/{{ $json.credentials.botpress_workspace_id }}/bots/{{ $json.credentials.botpress_bot_id_sales }}/run"
+        headers:
+          Authorization: "Bearer {{ $json.credentials.botpress_api_key }}"
+          Content-Type: "application/json"
+        body: "={{ $json }}"
+        response_format: "json"
+
+# =============================================================================
+# PASO 3: BOTPRESS ANALIZA Y DEVUELVE INTENCIÓN
+# =============================================================================
+
+step_3_botpress_processing:
+  service: "Botpress ADK"
+  agent: "sales_agent"
+  workspace_id: "{{ tenant_workspace_id }}"
+  bot_id: "{{ bot_id_sales }}"
+  
+  input_contract: |
+    {
+      "tenant_id": "TENANT_DEMO",
+      "channel": "whatsapp",
+      "conversation_id": 12345,
+      "contact": {
+        "id": 9988,
+        "name": "Juan Pérez",
+        "phone": "+56979540471",
+        "email": null
+      },
+      "message": {
+        "id": 555,
+        "type": "text",
+        "content": "¿Tienen zapatillas talla 42?",
+        "attachments": []
+      },
+      "context": {
+        "language": "es-CL",
+        "shopify_connected": true,
+        "shopify_store_domain": "tienda-demo.myshopify.com"
+      }
+    }
+  
+  botpress_logic:
+    - "Parse message content"
+    - "Extract entities: category=zapatillas, size=42"
+    - "Classify intent: product_query"
+    - "Determine route: shopify_sales"
+    - "Generate structured response"
+  
+  output_contract: |
+    {
+      "intent": "product_query",
+      "confidence": 0.94,
+      "route": "shopify_sales",
+      "entities": {
+        "category": "zapatillas",
+        "size": "42"
+      },
+      "actions": [
+        {
+          "type": "CALL_MCP",
+          "tool": "shopify_search_products",
+          "params": {
+            "query": "zapatillas talla 42",
+            "limit": 5
+          }
+        }
+      ],
+      "reply_suggestion": "Claro, te busco zapatillas en talla 42, dame un segundo…"
+    }
+
+# =============================================================================
+# PASO 4: n8n LLAMA MCP → SHOPIFY
+# =============================================================================
+
+step_4_n8n_mcp_call:
+  workflow_continuation: true
+  
+  nodes:
+    - node_6_if_route:
+        type: "n8n-nodes-base.if"
+        name: "Check Route"
+        condition:
+          - "={{ $json.route === 'shopify_sales' }}"
+    
+    - node_7_call_mcp:
+        type: "n8n-nodes-base.httpRequest"
+        name: "MCP: Shopify Search Products"
+        method: "POST"
+        url: "https://mcp.smarterbot.cl/api/tools/shopify_search_products"
+        headers:
+          Authorization: "Bearer {{ $json.credentials.shopify_admin_token }}"
+          X-SMOS-Tenant-ID: "={{ $json.tenant_id }}"
+          X-SMOS-Identity: "smarterbotcl@gmail.com"
+          Content-Type: "application/json"
+        body:
+          query: "={{ $json.actions[0].params.query }}"
+          limit: "={{ $json.actions[0].params.limit }}"
+          store_domain: "={{ $json.credentials.shopify_store_domain }}"
+        response_format: "json"
+  
+  mcp_response_example: |
+    {
+      "products": [
+        {
+          "id": "gid://shopify/Product/7891234567890",
+          "title": "Zapatilla Running Azul",
+          "variant": "Talla 42",
+          "price": 39990,
+          "currency": "CLP",
+          "stock": 5,
+          "url": "https://tienda-demo.myshopify.com/products/zapatilla-running-azul-42"
+        },
+        {
+          "id": "gid://shopify/Product/7891234567891",
+          "title": "Zapatilla Training Negro",
+          "variant": "Talla 42",
+          "price": 34990,
+          "currency": "CLP",
+          "stock": 3,
+          "url": "https://tienda-demo.myshopify.com/products/zapatilla-training-negro-42"
+        }
+      ],
+      "total": 2
+    }
+
+# =============================================================================
+# PASO 5: n8n CONSTRUYE RESPUESTA FINAL Y ENVÍA A CHATWOOT
+# =============================================================================
+
+step_5_n8n_send_response:
+  nodes:
+    - node_8_build_reply:
+        type: "n8n-nodes-base.function"
+        name: "Build Reply Message"
+        code: |
+          const products = $input.item.json.products;
+          const replySuggestion = $node["Call Botpress Sales Agent"].json.reply_suggestion;
+          
+          let reply = `${replySuggestion}\n\n`;
+          
+          products.forEach((product, index) => {
+            reply += `${index + 1}) ${product.title} — ${product.price} CLP\n`;
+            reply += `   Link: ${product.url}\n\n`;
+          });
+          
+          reply += "¿Quieres que te prepare el carrito de compra?";
+          
+          return {
+            json: {
+              content: reply,
+              conversation_id: $node["Chatwoot Webhook Receiver"].json.conversation.id,
+              account_id: $node["Chatwoot Webhook Receiver"].json.account.id
+            }
+          };
+    
+    - node_9_send_to_chatwoot:
+        type: "n8n-nodes-base.httpRequest"
+        name: "Send Reply to Chatwoot"
+        method: "POST"
+        url: "https://chatwoot.smarterbot.cl/api/v1/accounts/{{ $json.account_id }}/conversations/{{ $json.conversation_id }}/messages"
+        headers:
+          api_access_token: "={{ $node['Resolve Tenant ID'].json.credentials.chatwoot_api_token }}"
+          Content-Type: "application/json"
+        body:
+          content: "={{ $json.content }}"
+          message_type: "outgoing"
+          private: false
+        response_format: "json"
+    
+    - node_10_audit_log:
+        type: "n8n-nodes-base.httpRequest"
+        name: "Audit Log to Redpanda"
+        method: "POST"
+        url: "https://redpanda.smarterbot.cl/topics/smarteros.audit.shopify"
+        body:
+          tenant_id: "={{ $node['Resolve Tenant ID'].json.tenant_id }}"
+          flow_id: "e2e_shopify_sales"
+          conversation_id: "={{ $json.conversation_id }}"
+          intent: "={{ $node['Call Botpress Sales Agent'].json.intent }}"
+          products_returned: "={{ $node['MCP: Shopify Search Products'].json.total }}"
+          latency_ms: "={{ $now - $node['Chatwoot Webhook Receiver'].json.created_at }}"
+          timestamp: "={{ $now }}"
+
+# =============================================================================
+# RESULTADO FINAL
+# =============================================================================
+
+expected_result:
+  whatsapp_message_sent: true
+  latency: "< 5s"
+  customer_sees: |
+    Claro, te busco zapatillas en talla 42, dame un segundo…
+    
+    1) Zapatilla Running Azul — 39990 CLP
+       Link: https://tienda-demo.myshopify.com/products/zapatilla-running-azul-42
+    
+    2) Zapatilla Training Negro — 34990 CLP
+       Link: https://tienda-demo.myshopify.com/products/zapatilla-training-negro-42
+    
+    ¿Quieres que te prepare el carrito de compra?
+
+# =============================================================================
+# MÉTRICAS Y MONITOREO
+# =============================================================================
+
+metrics:
+  latency_p50: "3.2s"
+  latency_p95: "4.8s"
+  latency_p99: "6.1s"
+  success_rate: "97.5%"
+  error_rate: "2.5%"
+  
+  errors_breakdown:
+    - "Shopify API timeout: 1.2%"
+    - "Botpress unavailable: 0.8%"
+    - "HMAC validation failed: 0.5%"
+
+health_checks:
+  - endpoint: "https://n8n.smarterbot.cl/health"
+    interval: "30s"
+  - endpoint: "https://botpress.smarterbot.cl/api/v1/health"
+    interval: "30s"
+  - endpoint: "https://mcp.smarterbot.cl/health"
+    interval: "30s"
+  - endpoint: "https://chatwoot.smarterbot.cl/api/health"
+    interval: "30s"
+
+alerts:
+  - condition: "latency_p95 > 7s"
+    action: "Send Slack alert + email to ops@smarterbot.cl"
+  - condition: "error_rate > 5%"
+    action: "PagerDuty incident + WhatsApp to founder"
+  - condition: "Shopify API timeout > 10 consecutive"
+    action: "Fallback to cached products + alert DevOps"
+
+# =============================================================================
+# DEPENDENCIAS Y PREREQUISITOS
+# =============================================================================
+
+dependencies:
+  services:
+    - name: "Chatwoot"
+      url: "https://chatwoot.smarterbot.cl"
+      health: "/api/health"
+    - name: "n8n"
+      url: "https://n8n.smarterbot.cl"
+      health: "/health"
+    - name: "Botpress"
+      url: "https://botpress.smarterbot.cl"
+      health: "/api/v1/health"
+    - name: "MCP"
+      url: "https://mcp.smarterbot.cl"
+      health: "/health"
+    - name: "Shopify"
+      url: "https://{{ store_domain }}"
+      health: "/admin/api/2024-10/shop.json"
+    - name: "Vault"
+      url: "https://vault.smarterbot.cl:8200"
+      health: "/v1/sys/health"
+  
+  credentials_required:
+    - "secret/tenant/<TENANT_ID>/chatwoot/api_token"
+    - "secret/tenant/<TENANT_ID>/chatwoot/hmac_secret"
+    - "secret/tenant/<TENANT_ID>/botpress/api_key"
+    - "secret/tenant/<TENANT_ID>/botpress/workspace_id"
+    - "secret/tenant/<TENANT_ID>/botpress/bot_id_sales"
+    - "secret/tenant/<TENANT_ID>/shopify/admin_token"
+    - "secret/tenant/<TENANT_ID>/shopify/store_domain"
+
+# =============================================================================
+# TESTING Y VALIDACIÓN
+# =============================================================================
+
+test_scenarios:
+  - scenario: "Happy path: product found"
+    input: "¿Tienen zapatillas talla 42?"
+    expected_intent: "product_query"
+    expected_route: "shopify_sales"
+    expected_products: "> 0"
+    expected_latency: "< 5s"
+  
+  - scenario: "No products found"
+    input: "¿Tienen zapatillas talla 99?"
+    expected_intent: "product_query"
+    expected_route: "shopify_sales"
+    expected_products: "0"
+    expected_response: "No encontré zapatillas en talla 99. ¿Te interesa otra talla?"
+  
+  - scenario: "Shopify API timeout"
+    input: "¿Tienen zapatillas talla 42?"
+    mock: "Shopify API timeout after 10s"
+    expected_fallback: "Cached products from last 24h"
+    expected_latency: "< 3s (cache hit)"
+  
+  - scenario: "Invalid HMAC signature"
+    input: "Malicious webhook payload"
+    expected_error: "401 Unauthorized: Invalid HMAC signature"
+    expected_audit_log: true
+
+# =============================================================================
+# ROADMAP Y MEJORAS
+# =============================================================================
+
+roadmap:
+  q1_2025:
+    - "Deploy sandbox n8n workflow"
+    - "Integrate Botpress sales agent"
+    - "Test end-to-end with 3 tenants"
+  
+  q2_2025:
+    - "Add cart generation: Botpress → MCP → Shopify create_cart"
+    - "Implement checkout link generation"
+    - "Add product recommendations (RAG over catalog)"
+  
+  q3_2025:
+    - "Multi-agent handoffs: sales → billing → support"
+    - "Context preservation across agents"
+    - "Advanced analytics (conversion rate tracking)"
+  
+  q4_2025:
+    - "Dedicated Botpress per tenant (enterprise)"
+    - "Custom LLM fine-tuning per tenant"
+    - "SLA 99.9% monitoring"

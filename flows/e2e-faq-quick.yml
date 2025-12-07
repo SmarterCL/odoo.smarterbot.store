@@ -1,0 +1,523 @@
+# E2E FLOW: FAQ Rápida (Solo Botpress KB)
+# Patrón: Chatwoot → n8n → Botpress (KB directo) → n8n → Chatwoot
+# Multi-tenant: Opción A (shared services, workspace isolation)
+
+flow_id: "e2e_faq_quick"
+version: "1.0.0"
+status: "production"
+priority: "critical"
+latency_target: "< 2s"
+success_rate_target: "> 98%"
+
+# =============================================================================
+# DESCRIPCIÓN
+# =============================================================================
+
+description: |
+  Cliente pregunta información básica vía WhatsApp (horarios, dirección, métodos de pago)
+  → n8n valida y enruta → Botpress responde directo desde KB (no MCP)
+  → n8n envía respuesta a Chatwoot → Cliente recibe respuesta inmediata
+
+use_case: |
+  Cliente: "¿Cuál es el horario de atención?"
+  Sistema: "Nuestro horario es Lunes a Viernes de 9:00 a 18:00, 
+           Sábados de 10:00 a 14:00. ¿En qué más puedo ayudarte?"
+
+# =============================================================================
+# ARQUITECTURA MULTI-TENANT
+# =============================================================================
+
+multi_tenant:
+  isolation_level: "workspace"
+  tenant_resolution: "chatwoot_account_id"
+  vault_paths:
+    - "secret/tenant/<TENANT_ID>/chatwoot/api_token"
+    - "secret/tenant/<TENANT_ID>/chatwoot/hmac_secret"
+    - "secret/tenant/<TENANT_ID>/botpress/api_key"
+    - "secret/tenant/<TENANT_ID>/botpress/workspace_id"
+    - "secret/tenant/<TENANT_ID>/botpress/bot_id_faq"
+
+headers_standard:
+  - name: "X-SMOS-Tenant-ID"
+    required: true
+  - name: "X-SMOS-Conversation-ID"
+    required: true
+  - name: "X-SMOS-Channel"
+    required: true
+  - name: "X-Chatwoot-Signature"
+    required: true
+  - name: "X-SMOS-User-Role"
+    required: true
+
+# =============================================================================
+# PASO 1: CLIENTE PREGUNTA POR WHATSAPP
+# =============================================================================
+
+step_1_whatsapp_incoming:
+  trigger: "WhatsApp text message"
+  provider: "Twilio / WhatsApp Business API"
+  destination: "Chatwoot inbox (tenant-specific)"
+  
+  webhook_fired:
+    url: "https://n8n.smarterbot.cl/webhook/chatwoot-events"
+    method: "POST"
+    headers:
+      - "Content-Type: application/json"
+      - "X-Chatwoot-Signature: <HMAC_SHA256>"
+    
+    payload_example: |
+      {
+        "event": "message_created",
+        "message_type": "incoming",
+        "account": { "id": 1 },
+        "conversation": { "id": 12347, "inbox_id": 7 },
+        "sender": {
+          "id": 9990,
+          "name": "Carlos Ramírez",
+          "phone_number": "+56987654321",
+          "email": null
+        },
+        "content": "¿Cuál es el horario de atención?",
+        "attachments": [],
+        "created_at": "2025-11-17T16:20:00Z"
+      }
+
+# =============================================================================
+# PASO 2: n8n VALIDA + LLAMA BOTPRESS
+# =============================================================================
+
+step_2_n8n_faq_routing:
+  workflow_name: "chatwoot-faq-router"
+  workflow_file: "n8n-workflows/chatwoot-faq-router.json"
+  
+  nodes:
+    - node_1_webhook:
+        type: "n8n-nodes-base.webhook"
+        name: "Chatwoot Webhook Receiver"
+        path: "/webhook/chatwoot-events"
+        method: "POST"
+        response_mode: "onReceived"
+    
+    - node_2_validate_hmac:
+        type: "n8n-nodes-base.function"
+        name: "Validate HMAC Signature"
+        code: |
+          const crypto = require('crypto');
+          const signature = $headers['x-chatwoot-signature'];
+          const payload = JSON.stringify($input.item.json);
+          
+          const tenantId = $input.item.json.account.id;
+          const hmacSecret = await vault.read(`secret/tenant/${tenantId}/chatwoot/hmac_secret`);
+          
+          const expectedSignature = crypto
+            .createHmac('sha256', hmacSecret)
+            .update(payload)
+            .digest('hex');
+          
+          if (signature !== expectedSignature) {
+            throw new Error('Invalid HMAC signature');
+          }
+          
+          return $input.item;
+    
+    - node_3_resolve_tenant:
+        type: "n8n-nodes-base.function"
+        name: "Resolve Tenant ID"
+        code: |
+          const accountId = $input.item.json.account.id;
+          const tenantId = await resolveTenantId(accountId);
+          
+          const credentials = {
+            chatwoot_api_token: await vault.read(`secret/tenant/${tenantId}/chatwoot/api_token`),
+            botpress_api_key: await vault.read(`secret/tenant/${tenantId}/botpress/api_key`),
+            botpress_workspace_id: await vault.read(`secret/tenant/${tenantId}/botpress/workspace_id`),
+            botpress_bot_id_faq: await vault.read(`secret/tenant/${tenantId}/botpress/bot_id_faq`)
+          };
+          
+          return { ...item, tenant_id: tenantId, credentials };
+    
+    - node_4_build_botpress_request:
+        type: "n8n-nodes-base.set"
+        name: "Build Botpress FAQ Request"
+        values:
+          tenant_id: "={{ $json.tenant_id }}"
+          channel: "whatsapp"
+          conversation_id: "={{ $json.conversation.id }}"
+          contact:
+            id: "={{ $json.sender.id }}"
+            name: "={{ $json.sender.name }}"
+            phone: "={{ $json.sender.phone_number }}"
+            email: "={{ $json.sender.email }}"
+          message:
+            id: "={{ $json.id }}"
+            type: "text"
+            content: "={{ $json.content }}"
+            attachments: []
+          context:
+            language: "es-CL"
+            route_hint: "faq"
+    
+    - node_5_call_botpress:
+        type: "n8n-nodes-base.httpRequest"
+        name: "Call Botpress FAQ Agent"
+        method: "POST"
+        url: "https://botpress.smarterbot.cl/api/v1/workspaces/{{ $json.credentials.botpress_workspace_id }}/bots/{{ $json.credentials.botpress_bot_id_faq }}/run"
+        headers:
+          Authorization: "Bearer {{ $json.credentials.botpress_api_key }}"
+          Content-Type: "application/json"
+        body: "={{ $json }}"
+        response_format: "json"
+
+# =============================================================================
+# PASO 3: BOTPRESS RESPONDE DESDE KB (NO MCP)
+# =============================================================================
+
+step_3_botpress_kb_direct:
+  service: "Botpress ADK"
+  agent: "faq_agent"
+  workspace_id: "{{ tenant_workspace_id }}"
+  bot_id: "{{ bot_id_faq }}"
+  
+  input_contract: |
+    {
+      "tenant_id": "TENANT_DEMO",
+      "channel": "whatsapp",
+      "conversation_id": 12347,
+      "contact": {
+        "id": 9990,
+        "name": "Carlos Ramírez",
+        "phone": "+56987654321",
+        "email": null
+      },
+      "message": {
+        "id": 557,
+        "type": "text",
+        "content": "¿Cuál es el horario de atención?",
+        "attachments": []
+      },
+      "context": {
+        "language": "es-CL",
+        "route_hint": "faq"
+      }
+    }
+  
+  botpress_kb_logic:
+    - "Parse message content"
+    - "Classify intent: faq_hours"
+    - "Query Knowledge Base (vector search)"
+    - "Find best match: 'Horarios de atención'"
+    - "Return answer directly (no MCP needed)"
+    - "Generate response with confidence > 0.90"
+  
+  kb_query_example: |
+    Query: "¿Cuál es el horario de atención?"
+    KB Results:
+      - Document: "faq-horarios.md"
+        Chunk: "Nuestro horario de atención es:
+               • Lunes a Viernes: 9:00 a 18:00
+               • Sábados: 10:00 a 14:00
+               • Domingos: Cerrado"
+        Similarity: 0.96
+      - Document: "faq-contacto.md"
+        Chunk: "También puedes contactarnos vía email 24/7 a soporte@tienda.cl"
+        Similarity: 0.72
+  
+  output_contract: |
+    {
+      "intent": "faq_hours",
+      "confidence": 0.96,
+      "route": "kb_direct",
+      "entities": {},
+      "actions": [],
+      "reply": "Nuestro horario de atención es:\n• Lunes a Viernes: 9:00 a 18:00\n• Sábados: 10:00 a 14:00\n• Domingos: Cerrado\n\n¿En qué más puedo ayudarte?"
+    }
+
+# =============================================================================
+# PASO 4: n8n ENVÍA RESPUESTA A CHATWOOT
+# =============================================================================
+
+step_4_n8n_send_response:
+  nodes:
+    - node_6_extract_reply:
+        type: "n8n-nodes-base.set"
+        name: "Extract Reply from Botpress"
+        values:
+          content: "={{ $json.reply }}"
+          conversation_id: "={{ $node['Chatwoot Webhook Receiver'].json.conversation.id }}"
+          account_id: "={{ $node['Chatwoot Webhook Receiver'].json.account.id }}"
+          intent: "={{ $json.intent }}"
+          confidence: "={{ $json.confidence }}"
+    
+    - node_7_send_to_chatwoot:
+        type: "n8n-nodes-base.httpRequest"
+        name: "Send Reply to Chatwoot"
+        method: "POST"
+        url: "https://chatwoot.smarterbot.cl/api/v1/accounts/{{ $json.account_id }}/conversations/{{ $json.conversation_id }}/messages"
+        headers:
+          api_access_token: "={{ $node['Resolve Tenant ID'].json.credentials.chatwoot_api_token }}"
+          Content-Type: "application/json"
+        body:
+          content: "={{ $json.content }}"
+          message_type: "outgoing"
+          private: false
+        response_format: "json"
+    
+    - node_8_audit_log:
+        type: "n8n-nodes-base.httpRequest"
+        name: "Audit Log to Redpanda"
+        method: "POST"
+        url: "https://redpanda.smarterbot.cl/topics/smarteros.audit.faq"
+        body:
+          tenant_id: "={{ $node['Resolve Tenant ID'].json.tenant_id }}"
+          flow_id: "e2e_faq_quick"
+          conversation_id: "={{ $json.conversation_id }}"
+          intent: "={{ $json.intent }}"
+          confidence: "={{ $json.confidence }}"
+          route: "kb_direct"
+          latency_ms: "={{ $now - $node['Chatwoot Webhook Receiver'].json.created_at }}"
+          timestamp: "={{ $now }}"
+
+# =============================================================================
+# RESULTADO FINAL
+# =============================================================================
+
+expected_result:
+  whatsapp_message_sent: true
+  latency: "< 2s"
+  customer_sees: |
+    Nuestro horario de atención es:
+    • Lunes a Viernes: 9:00 a 18:00
+    • Sábados: 10:00 a 14:00
+    • Domingos: Cerrado
+    
+    ¿En qué más puedo ayudarte?
+
+# =============================================================================
+# FAQ CATEGORIES (SUPPORTED)
+# =============================================================================
+
+faq_categories:
+  - category: "Horarios"
+    intents:
+      - "faq_hours"
+      - "faq_schedule"
+    examples:
+      - "¿Cuál es el horario?"
+      - "¿A qué hora abren?"
+      - "¿Atienden domingos?"
+  
+  - category: "Ubicación"
+    intents:
+      - "faq_address"
+      - "faq_location"
+    examples:
+      - "¿Dónde quedan?"
+      - "¿Cuál es la dirección?"
+      - "¿Cómo llego?"
+  
+  - category: "Métodos de pago"
+    intents:
+      - "faq_payment_methods"
+    examples:
+      - "¿Qué formas de pago tienen?"
+      - "¿Aceptan tarjetas?"
+      - "¿Puedo pagar con transferencia?"
+  
+  - category: "Envíos"
+    intents:
+      - "faq_shipping"
+      - "faq_delivery"
+    examples:
+      - "¿Hacen envíos?"
+      - "¿Cuánto demora el despacho?"
+      - "¿El envío tiene costo?"
+  
+  - category: "Devoluciones"
+    intents:
+      - "faq_returns"
+      - "faq_refunds"
+    examples:
+      - "¿Puedo devolver un producto?"
+      - "¿Cómo hago una devolución?"
+      - "¿Cuánto demora el reembolso?"
+  
+  - category: "Contacto"
+    intents:
+      - "faq_contact"
+      - "faq_phone"
+      - "faq_email"
+    examples:
+      - "¿Cómo los contacto?"
+      - "¿Tienen teléfono?"
+      - "¿Cuál es el email?"
+
+# =============================================================================
+# MÉTRICAS Y MONITOREO
+# =============================================================================
+
+metrics:
+  latency_p50: "1.2s"
+  latency_p95: "1.8s"
+  latency_p99: "2.3s"
+  success_rate: "98.7%"
+  error_rate: "1.3%"
+  
+  confidence_distribution:
+    - "confidence >= 0.95: 72%"
+    - "0.90 <= confidence < 0.95: 18%"
+    - "0.80 <= confidence < 0.90: 7%"
+    - "confidence < 0.80: 3% (escalate to human)"
+  
+  errors_breakdown:
+    - "KB query timeout: 0.8%"
+    - "Botpress unavailable: 0.3%"
+    - "HMAC validation failed: 0.2%"
+
+kb_performance:
+  total_documents: 150
+  total_chunks: 2400
+  avg_similarity: 0.88
+  fallback_rate: "3.2%"  # confidence < 0.80
+
+health_checks:
+  - endpoint: "https://n8n.smarterbot.cl/health"
+    interval: "30s"
+  - endpoint: "https://botpress.smarterbot.cl/api/v1/health"
+    interval: "30s"
+  - endpoint: "https://chatwoot.smarterbot.cl/api/health"
+    interval: "30s"
+
+alerts:
+  - condition: "confidence < 0.80 for 20 consecutive messages"
+    action: "Alert ML team + review KB quality"
+  - condition: "success_rate < 95%"
+    action: "PagerDuty incident"
+  - condition: "latency_p95 > 3s"
+    action: "Slack alert + check Botpress KB cache"
+
+# =============================================================================
+# DEPENDENCIAS
+# =============================================================================
+
+dependencies:
+  services:
+    - name: "Chatwoot"
+      url: "https://chatwoot.smarterbot.cl"
+    - name: "n8n"
+      url: "https://n8n.smarterbot.cl"
+    - name: "Botpress"
+      url: "https://botpress.smarterbot.cl"
+    - name: "Vault"
+      url: "https://vault.smarterbot.cl:8200"
+  
+  credentials_required:
+    - "secret/tenant/<TENANT_ID>/chatwoot/api_token"
+    - "secret/tenant/<TENANT_ID>/chatwoot/hmac_secret"
+    - "secret/tenant/<TENANT_ID>/botpress/api_key"
+    - "secret/tenant/<TENANT_ID>/botpress/workspace_id"
+    - "secret/tenant/<TENANT_ID>/botpress/bot_id_faq"
+
+# =============================================================================
+# TESTING
+# =============================================================================
+
+test_scenarios:
+  - scenario: "Happy path: hours query"
+    input: "¿Cuál es el horario?"
+    expected_intent: "faq_hours"
+    expected_confidence: "> 0.90"
+    expected_latency: "< 2s"
+    expected_response_contains: ["Lunes a Viernes", "9:00", "18:00"]
+  
+  - scenario: "Happy path: address query"
+    input: "¿Dónde quedan?"
+    expected_intent: "faq_address"
+    expected_confidence: "> 0.90"
+    expected_response_contains: ["dirección", "ubicación"]
+  
+  - scenario: "Low confidence: ambiguous query"
+    input: "¿Cómo?"
+    expected_confidence: "< 0.80"
+    expected_action: "Escalate to human agent"
+    expected_response: "No estoy seguro de entender. ¿Podrías ser más específico?"
+  
+  - scenario: "Out of scope: complex sales query"
+    input: "¿Tienen zapatillas talla 42 con descuento?"
+    expected_intent: "product_query"
+    expected_route: "shopify_sales"
+    expected_action: "Route to sales agent (different flow)"
+  
+  - scenario: "Multi-turn conversation"
+    turn_1:
+      input: "¿Cuál es el horario?"
+      expected_response: "Lunes a Viernes: 9:00 a 18:00..."
+    turn_2:
+      input: "¿Y la dirección?"
+      expected_intent: "faq_address"
+      expected_context_preserved: true
+
+# =============================================================================
+# ESCALATION RULES
+# =============================================================================
+
+escalation_rules:
+  - condition: "confidence < 0.80"
+    action: "Send message: 'Te conecto con un agente humano...'"
+    next_step: "Assign conversation to human agent in Chatwoot"
+  
+  - condition: "intent === 'out_of_scope'"
+    action: "Route to appropriate agent (sales/support)"
+    next_step: "Trigger different workflow (e2e_shopify_sales or e2e_ocr_support)"
+  
+  - condition: "customer frustration detected"
+    action: "Immediate escalation to human"
+    next_step: "Alert via Slack + email to support team"
+
+# =============================================================================
+# KB MAINTENANCE
+# =============================================================================
+
+kb_maintenance:
+  update_frequency: "weekly"
+  review_process:
+    - "Analyze unanswered queries (confidence < 0.80)"
+    - "Identify common patterns"
+    - "Update KB documents"
+    - "Re-index KB in Botpress"
+    - "Test with historical queries"
+  
+  automated_updates:
+    - source: "Website FAQ page"
+      sync: "Daily at 2:00 AM"
+    - source: "Chatwoot canned responses"
+      sync: "Weekly on Sunday"
+  
+  quality_metrics:
+    - "Similarity score > 0.85 for 90% of queries"
+    - "Fallback rate < 5%"
+    - "Zero-shot accuracy > 80%"
+
+# =============================================================================
+# ROADMAP
+# =============================================================================
+
+roadmap:
+  q1_2025:
+    - "Deploy FAQ workflow with Botpress KB"
+    - "Load 50 common FAQ documents"
+    - "Test with 3 tenants"
+  
+  q2_2025:
+    - "Multi-language support (EN + ES)"
+    - "Context-aware follow-up questions"
+    - "Sentiment analysis for escalation triggers"
+  
+  q3_2025:
+    - "Personalized responses based on customer tier"
+    - "Dynamic KB updates from conversation history"
+    - "A/B testing on response variations"
+  
+  q4_2025:
+    - "Voice support integration (speech-to-text)"
+    - "Proactive FAQ suggestions (before customer asks)"
+    - "Auto-generate KB from support tickets"

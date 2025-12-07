@@ -1,0 +1,167 @@
+# smarteros-specs/services/vault-runtime.yml
+apiVersion: smarteros/v1
+kind: Service
+metadata:
+  name: vault-runtime
+  displayName: HashiCorp Vault
+  description: >
+    Centralized secrets management for SmarterOS multi-tenant platform.
+    Provides secure storage and access control for tenant configurations,
+    API keys, and sensitive data.
+  tags:
+    - security
+    - secrets
+    - vault
+    - multi-tenant
+spec:
+  category: security
+  tenantMode: multi-tenant
+
+  ingress:
+    enabled: true
+    host: vault.smarterbot.store
+    path: /
+    protocol: https
+
+  runtime:
+    type: docker
+    image: hashicorp/vault:latest
+    serviceName: vault
+    containerPort: 8200
+    healthcheck:
+      path: /v1/sys/health
+      intervalSeconds: 10
+      timeoutSeconds: 5
+      retries: 5
+
+  network:
+    internalName: smarter-net
+    exposeInternallyAs: http://vault:8200
+
+  dependencies:
+    - name: nexa-runtime
+      required: false
+    - name: n8n
+      required: false
+    - name: supabase
+      required: false
+
+  config:
+    storage:
+      backend: file
+      path: /vault/file
+    listener:
+      address: 0.0.0.0:8200
+      tlsDisable: true
+    security:
+      disableMlock: true
+    audit:
+      enabled: true
+      logPath: /vault/logs/audit.log
+
+  volumes:
+    - name: vault-data
+      mountPath: /vault/file
+      persistent: true
+    - name: vault-logs
+      mountPath: /vault/logs
+      persistent: true
+    - name: vault-config
+      mountPath: /vault/config
+      persistent: true
+
+  secrets:
+    - name: VAULT_ROOT_TOKEN
+      description: Root token for Vault initialization
+      required: true
+      defaultValue: smarteros-dev-token
+    - name: VAULT_ADDR
+      description: Vault API address
+      required: true
+      defaultValue: http://0.0.0.0:8200
+
+  policies:
+    - name: tenant-policy
+      description: Per-tenant secret isolation
+      rules:
+        - path: secret/data/tenant/{{tenant_id}}/*
+          capabilities: [read, list, create, update]
+    
+    - name: nexa-runtime-policy
+      description: Nexa Runtime read access to tenant configs
+      rules:
+        - path: secret/data/tenant/*/nexa
+          capabilities: [read]
+    
+    - name: admin-policy
+      description: Full administrative access
+      rules:
+        - path: secret/*
+          capabilities: [create, read, update, delete, list]
+        - path: sys/*
+          capabilities: [create, read, update, delete, sudo]
+
+  authMethods:
+    - name: approle
+      type: approle
+      description: Machine authentication for services
+      roles:
+        - name: nexa-runtime
+          policies: [nexa-runtime-policy]
+          tokenTTL: 1h
+          tokenMaxTTL: 24h
+    
+    - name: userpass
+      type: userpass
+      description: Human authentication for admins
+      users:
+        - name: admin
+          policies: [admin-policy]
+
+  interfaces:
+    - name: kv-secrets
+      type: secrets
+      version: v2
+      basePath: /v1/secret
+      description: Key-Value secrets engine for tenant configurations
+    
+    - name: web-ui
+      type: http
+      basePath: /ui
+      description: Web-based management interface
+    
+    - name: api
+      type: http
+      basePath: /v1
+      description: RESTful API for programmatic access
+
+  monitoring:
+    metrics:
+      enabled: true
+      path: /v1/sys/metrics
+      format: prometheus
+    
+    healthChecks:
+      - name: vault-status
+        endpoint: /v1/sys/health
+        interval: 30s
+      - name: seal-status
+        endpoint: /v1/sys/seal-status
+        interval: 60s
+
+  backup:
+    enabled: true
+    schedule: "0 3 * * *"  # Daily at 3 AM
+    retention: 30  # days
+    targets:
+      - type: file
+        path: /backups/vault
+
+  documentation:
+    setupGuide: /root/specs/integrations/vault-smarteros.md
+    apiReference: https://www.vaultproject.io/api-docs
+    examples:
+      - description: Read tenant Nexa config
+        code: vault kv get secret/tenant/demo/nexa
+      - description: Create new tenant secrets
+        code: vault kv put secret/tenant/rut-12345678-9/nexa NEXA_MODEL_ID="llama-3-8b-instruct"

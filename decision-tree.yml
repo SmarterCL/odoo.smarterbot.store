@@ -1,0 +1,363 @@
+# SmarterOS Decision Tree
+# Árbol de decisiones arquitectónicas para guiar el desarrollo del OS
+
+# Categorías de decisiones
+categories:
+  - infrastructure
+  - architecture
+  - security
+  - deployment
+  - multi-tenant
+  - integrations
+  - observability
+
+# Decisiones activas
+decisions:
+  
+  # INFRA-001: Hosting principal
+  - id: INFRA-001
+    title: "VPS único vs Multi-cloud"
+    category: infrastructure
+    status: decided
+    date: "2025-01-10"
+    decision: "VPS único (Hostinger)"
+    rationale: |
+      - Costo predecible (~$20/mes)
+      - Suficiente para MVP y primeros tenants
+      - Dokploy simplifica deployment
+      - Escalabilidad vertical disponible (hasta 16 CPU, 32GB RAM)
+    alternatives:
+      - AWS ECS/Fargate (más caro, más complejo)
+      - DigitalOcean App Platform (menos control)
+      - Railway/Render (vendor lock-in)
+    consequences:
+      - Single point of failure (mitigado con backups)
+      - Límite de escalabilidad (manejable hasta ~100 tenants)
+      - Simplicidad operacional
+    next_review: "2025-06-01"
+    
+  # INFRA-002: DNS y CDN
+  - id: INFRA-002
+    title: "DNS provider"
+    category: infrastructure
+    status: decided
+    date: "2025-01-10"
+    decision: "Cloudflare"
+    rationale: |
+      - CDN gratis incluido
+      - DDoS protection
+      - SSL automático
+      - API excelente para automatización
+      - Workers para edge computing futuro
+    alternatives:
+      - Route53 (más caro, AWS lock-in)
+      - Vercel DNS (limitado)
+      - DNSimple (sin CDN)
+    consequences:
+      - Dependencia de Cloudflare
+      - Proxy puede ocultar IPs reales
+    next_review: "2025-12-01"
+  
+  # ARCH-001: Monorepo vs Multirepo
+  - id: ARCH-001
+    title: "Estructura de código"
+    category: architecture
+    status: decided
+    date: "2025-01-12"
+    decision: "Monorepo con workspaces"
+    rationale: |
+      - Facilita compartir código entre proyectos
+      - Cambios atómicos cross-repo
+      - Mejor para equipos pequeños
+      - Codex Agents entiende mejor el contexto
+    alternatives:
+      - Multirepo (más aislamiento, más overhead)
+      - Monolito (menos flexible)
+    consequences:
+      - Builds más lentos si crece mucho
+      - Permisos de acceso menos granulares
+      - Mejor experiencia de desarrollo
+    next_review: "2025-06-01"
+  
+  # ARCH-002: Frontend framework
+  - id: ARCH-002
+    title: "Framework de frontend"
+    category: architecture
+    status: decided
+    date: "2025-01-10"
+    decision: "Next.js 15 (App Router)"
+    rationale: |
+      - SSR/SSG out of the box
+      - Vercel deploy seamless
+      - React Server Components
+      - Route handlers (API endpoints)
+      - Middleware para multi-tenant
+    alternatives:
+      - Remix (menos maduro)
+      - SvelteKit (menos ecosystem)
+      - Astro (no tan dinámico)
+    consequences:
+      - Lock-in moderado con Vercel
+      - Curva de aprendizaje App Router
+      - Excelente performance
+    next_review: "2026-01-01"
+  
+  # ARCH-003: Database
+  - id: ARCH-003
+    title: "Database principal"
+    category: architecture
+    status: decided
+    date: "2025-01-10"
+    decision: "Supabase (PostgreSQL + Realtime)"
+    rationale: |
+      - PostgreSQL es robust y conocido
+      - Row Level Security para multi-tenant
+      - Realtime subscriptions
+      - Auth integrado (alternativa a Clerk)
+      - Storage de archivos
+      - Edge functions
+    alternatives:
+      - PlanetScale (MySQL, más caro)
+      - MongoDB Atlas (NoSQL, menos relacional)
+      - Railway Postgres (menos features)
+    consequences:
+      - Aprender RLS policies
+      - Vendor lock-in moderado
+      - Excelente DX
+    next_review: "2026-01-01"
+  
+  # ARCH-004: Workflow engine
+  - id: ARCH-004
+    title: "Motor de automatización"
+    category: architecture
+    status: decided
+    date: "2025-01-11"
+    decision: "N8N self-hosted"
+    rationale: |
+      - Open source, sin límites de ejecuciones
+      - UI visual para no-developers
+      - 400+ integraciones nativas
+      - Self-hosted = sin costos por ejecución
+      - Code nodes para lógica custom
+    alternatives:
+      - Zapier (muy caro para scale)
+      - Make (más caro que N8N cloud)
+      - Temporal (más complejo, overkill)
+    consequences:
+      - Mantenimiento propio
+      - Backups críticos
+      - Flexibilidad total
+    next_review: "2025-12-01"
+  
+  # SEC-001: Autenticación
+  - id: SEC-001
+    title: "Sistema de autenticación"
+    category: security
+    status: decided
+    date: "2025-01-10"
+    decision: "Clerk"
+    rationale: |
+      - Multi-tenant out of the box (organizations)
+      - UI components listos
+      - Social login fácil
+      - Webhooks para sincronización
+      - Middleware Next.js nativo
+    alternatives:
+      - Supabase Auth (más integrado, menos features)
+      - NextAuth.js (más trabajo, más flexible)
+      - Auth0 (más caro)
+    consequences:
+      - Costo escala con usuarios (~$25/1000 MAU)
+      - Vendor lock-in
+      - Excelente DX
+    next_review: "2025-06-01"
+  
+  # DEPLOY-001: Frontend hosting
+  - id: DEPLOY-001
+    title: "Hosting de frontends"
+    category: deployment
+    status: decided
+    date: "2025-01-12"
+    decision: "Vercel"
+    rationale: |
+      - Created by Next.js team
+      - Zero-config deploys
+      - Preview deployments
+      - Edge functions
+      - Analytics incluido
+      - Git integration perfecto
+    alternatives:
+      - Netlify (similar, menos Next.js-specific)
+      - Cloudflare Pages (más barato, menos features)
+      - Self-host en VPS (más trabajo)
+    consequences:
+      - Costo escala con bandwidth
+      - Vendor lock-in moderado
+      - Excelente DX
+    next_review: "2025-06-01"
+  
+  # DEPLOY-002: Backend hosting
+  - id: DEPLOY-002
+    title: "Hosting de backend services"
+    category: deployment
+    status: decided
+    date: "2025-01-11"
+    decision: "Docker + Dokploy (en VPS)"
+    rationale: |
+      - Control total del stack
+      - Dokploy simplifica Docker compose
+      - Traefik reverse proxy automático
+      - SSL automático con Let's Encrypt
+      - Logs centralizados
+    alternatives:
+      - Railway (más caro, menos control)
+      - Fly.io (más complejo)
+      - Kubernetes (overkill para nuestro scale)
+    consequences:
+      - Mantenimiento del VPS
+      - Aprender Dokploy
+      - Flexibilidad máxima
+    next_review: "2025-06-01"
+  
+  # TENANT-001: Isolation strategy
+  - id: TENANT-001
+    title: "Estrategia de aislamiento multi-tenant"
+    category: multi-tenant
+    status: decided
+    date: "2025-01-12"
+    decision: "Hybrid: RLS (data) + Subdomains (apps)"
+    rationale: |
+      - PostgreSQL RLS para data isolation
+      - Subdomains para branding (tenant.smarterbot.cl)
+      - Shared infrastructure = más económico
+      - Escalable hasta ~100-500 tenants
+    alternatives:
+      - Databases separadas (más caro, más complejo)
+      - Single domain con path (/tenant) (menos flexible)
+      - Containers por tenant (no escala)
+    consequences:
+      - RLS policies críticas (testing importante)
+      - Wildcard SSL necesario
+      - Buena balance costo/aislamiento
+    next_review: "2025-06-01"
+  
+  # OBS-001: Observability platform
+  - id: OBS-001
+    title: "Plataforma de observabilidad"
+    category: observability
+    status: decided
+    date: "2025-01-13"
+    decision: "Metabase (self-hosted) para analytics, logs Docker nativos"
+    rationale: |
+      - Metabase open source, self-hosted
+      - Conecta directo a PostgreSQL
+      - Dashboards visuales para tenants
+      - AI insights sobre uso
+      - Logs via `docker logs` suficiente por ahora
+    alternatives:
+      - Datadog (muy caro)
+      - Grafana + Prometheus (más complejo)
+      - Posthog (analytics focus, no logs)
+    consequences:
+      - Metabase consume recursos del VPS
+      - No hay distributed tracing (por ahora OK)
+      - Suficiente para MVP
+    next_review: "2025-03-01"
+  
+  # INT-001: E-commerce integration
+  - id: INT-001
+    title: "Integración de e-commerce"
+    category: integrations
+    status: decided
+    date: "2025-01-13"
+    decision: "Shopify (multi-store via Shopify Partners)"
+    rationale: |
+      - Cada tenant puede tener su Shopify store
+      - Shopify Partners permite gestionar múltiples tiendas
+      - API excelente
+      - Ecosistema de apps gigante
+      - Reconocimiento de marca
+    alternatives:
+      - WooCommerce (self-hosted, más trabajo)
+      - BigCommerce (menos popular en LatAm)
+      - Custom (meses de desarrollo)
+    consequences:
+      - Costo por tenant ($39-299/mes por store)
+      - Dependencia de Shopify
+      - Excelente time-to-market
+    next_review: "2025-06-01"
+  
+  # INT-002: CRM/ERP
+  - id: INT-002
+    title: "Sistema CRM/ERP"
+    category: integrations
+    status: decided
+    date: "2025-01-11"
+    decision: "Odoo (self-hosted, multi-company)"
+    rationale: |
+      - Open source, feature-complete
+      - Multi-company native
+      - CRM, ventas, inventario, contabilidad
+      - Self-hosted = sin límites de usuarios
+      - API XML-RPC + REST
+    alternatives:
+      - Salesforce (prohibitivamente caro)
+      - HubSpot (caro, SaaS only)
+      - Custom CRM (meses de desarrollo)
+    consequences:
+      - Curva de aprendizaje Odoo
+      - Consume recursos del VPS
+      - Muy completo, quizás overkill
+    next_review: "2025-06-01"
+
+# Decision templates
+templates:
+  infrastructure: |
+    ## Context
+    [Describe el problema o necesidad]
+    
+    ## Decision
+    [Qué decidimos hacer]
+    
+    ## Alternatives
+    - **Option 1**: [pros/cons]
+    - **Option 2**: [pros/cons]
+    
+    ## Consequences
+    - Positive: [...]
+    - Negative: [...]
+    - Risks: [...]
+    
+    ## Next Review
+    [Fecha para revisar esta decisión]
+
+# Decisiones pendientes
+pending:
+  - id: PENDING-001
+    title: "Multi-region deployment strategy"
+    category: infrastructure
+    priority: low
+    target_date: "2025-06-01"
+    context: "Cuando tengamos tenants internacionales, necesitaremos latencia baja"
+  
+  - id: PENDING-002
+    title: "AI model hosting (self-hosted vs API)"
+    category: integrations
+    priority: medium
+    target_date: "2025-03-01"
+    context: "Para features avanzadas de Botpress y análisis"
+  
+  - id: PENDING-003
+    title: "Disaster recovery plan"
+    category: security
+    priority: high
+    target_date: "2025-02-01"
+    context: "Antes de tener tenants en producción"
+
+# Próximas decisiones requeridas
+upcoming:
+  - "Estrategia de pricing multi-tenant"
+  - "Billing system (Stripe vs custom)"
+  - "Compliance (GDPR, SOC2) requirements"
+  - "Team collaboration features"
+  - "API rate limiting por tenant"

@@ -1,0 +1,198 @@
+http:
+  middlewares:
+    # Vault Authentication Middleware
+    vault-auth:
+      forwardAuth:
+        address: "http://vault-auth-validator:8080/validate"
+        authResponseHeaders:
+          - "X-Vault-User"
+          - "X-Vault-Policies"
+          - "X-Vault-Token-Valid"
+    
+    # Security Headers
+    security-headers:
+      headers:
+        frameDeny: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        customResponseHeaders:
+          X-Frame-Options: "SAMEORIGIN"
+          X-Content-Type-Options: "nosniff"
+    
+    # CORS Headers
+    cors-headers:
+      headers:
+        accessControlAllowOriginList:
+          - "*"
+        accessControlAllowMethods:
+          - "GET"
+          - "POST"
+          - "PUT"
+          - "DELETE"
+          - "OPTIONS"
+        accessControlAllowHeaders:
+          - "Authorization"
+          - "Content-Type"
+        accessControlMaxAge: 100
+    
+    # Rate Limiting
+    rate-limit:
+      rateLimit:
+        average: 100
+        burst: 50
+        period: 1m
+
+  routers:
+    # API Gateway - Dokploy
+    api-dokploy:
+      rule: "Host(`api.smarterbot.cl`, `api.smarterbot.store`) && PathPrefix(`/dokploy`)"
+      service: dokploy
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - vault-auth
+        - security-headers
+    
+    # API Gateway - n8n
+    api-n8n:
+      rule: "Host(`api.smarterbot.cl`, `api.smarterbot.store`) && PathPrefix(`/n8n`)"
+      service: n8n
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - vault-auth
+        - security-headers
+    
+    # API Gateway - Chatwoot
+    api-chatwoot:
+      rule: "Host(`api.smarterbot.cl`, `api.smarterbot.store`) && PathPrefix(`/chatwoot`)"
+      service: chatwoot
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - vault-auth
+        - security-headers
+    
+    # API Gateway - Metabase
+    api-metabase:
+      rule: "Host(`api.smarterbot.cl`, `api.smarterbot.store`) && PathPrefix(`/metabase`)"
+      service: metabase
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - vault-auth
+        - security-headers
+    
+    # API Gateway - Odoo
+    api-odoo:
+      rule: "Host(`api.smarterbot.cl`, `api.smarterbot.store`) && PathPrefix(`/odoo`)"
+      service: odoo
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - vault-auth
+        - security-headers
+    
+    # API Gateway - Portainer
+    api-portainer:
+      rule: "Host(`api.smarterbot.cl`, `api.smarterbot.store`) && PathPrefix(`/portainer`)"
+      service: portainer
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - vault-auth
+        - security-headers
+    
+    # API Gateway - Botpress
+    api-botpress:
+      rule: "Host(`api.smarterbot.cl`, `api.smarterbot.store`) && PathPrefix(`/botpress`)"
+      service: botpress
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - vault-auth
+        - security-headers
+    
+    # Health Check (Public - No Auth)
+    api-health:
+      rule: "Host(`api.smarterbot.cl`, `api.smarterbot.store`) && Path(`/health`)"
+      service: health-check
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - security-headers
+    
+    # API Root / Default (lowest priority)
+    api-root:
+      rule: "Host(`api.smarterbot.cl`, `api.smarterbot.store`)"
+      service: api-info
+      priority: 1
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - security-headers
+
+  services:
+    dokploy:
+      loadBalancer:
+        servers:
+          - url: "http://dokploy:3000"
+    
+    n8n:
+      loadBalancer:
+        servers:
+          - url: "http://smarter-n8n:5678"
+    
+    chatwoot:
+      loadBalancer:
+        servers:
+          - url: "http://smarter-chatwoot:3000"
+    
+    metabase:
+      loadBalancer:
+        servers:
+          - url: "http://smarteros-metabase:3000"
+    
+    odoo:
+      loadBalancer:
+        servers:
+          - url: "http://smarter-odoo:8069"
+    
+    portainer:
+      loadBalancer:
+        servers:
+          - url: "http://smarter-portainer:9000"
+    
+    botpress:
+      loadBalancer:
+        servers:
+          - url: "http://smarter-botpress:3000"
+    
+    health-check:
+      loadBalancer:
+        servers:
+          - url: "http://vault-auth-validator:8080"
+    
+    api-info:
+      loadBalancer:
+        servers:
+          - url: "http://vault-auth-validator:8080"

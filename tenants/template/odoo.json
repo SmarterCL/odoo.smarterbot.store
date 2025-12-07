@@ -1,0 +1,8 @@
+{
+  "url": "https://odoo.smarterbot.cl",
+  "db": "tenant_db",
+  "user": "user@example.com",
+  "password": "REPLACE_PASSWORD",
+  "modules_enabled": ["sale", "account", "stock"],
+  "currency": "CLP"
+}

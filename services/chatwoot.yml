@@ -1,0 +1,526 @@
+# Chatwoot Service Specification
+# Multi-channel customer inbox (WhatsApp, Email, Web Chat)
+
+version: "1.0.0"
+last_updated: "2025-11-17T00:00:00Z"
+status: "active"
+
+# ============================================
+# SERVICE METADATA
+# ============================================
+
+service:
+  id: "chatwoot"
+  name: "Chatwoot Inbox"
+  type: "backend"
+  category: "customer-engagement"
+  description: "Plataforma de mensajería omnicanal para WhatsApp, Email y Web Chat. Inbox inteligente con soporte multi-tenant."
+  
+  urls:
+    production: "https://chatwoot.smarterbot.cl"
+    admin: "https://chatwoot.smarterbot.cl/app/accounts/1"
+    api: "https://chatwoot.smarterbot.cl/api/v1"
+    webhook: "https://chatwoot.smarterbot.cl/webhooks"
+  
+  repository:
+    upstream: "https://github.com/chatwoot/chatwoot"
+    version: "v3.14.0"
+    license: "MIT"
+
+# ============================================
+# ARQUITECTURA DE INTEGRACION
+# ============================================
+
+integration_paths:
+  
+  # A) API Nativa (modo estándar)
+  native_api:
+    client_library: "app.smarterbot.cl/lib/chatwoot-client.ts"
+    authentication: "Bearer Token"
+    vault_secret: "secret/chatwoot/api"
+    capabilities:
+      - "Crear conversaciones"
+      - "Enviar mensajes"
+      - "Actualizar custom_attributes"
+      - "Sincronizar contactos"
+      - "Buscar chat IDs"
+      - "Asignar conversaciones a agentes"
+    usage: "Cliente TypeScript oficial para CRUD operations"
+    stability: "production-ready"
+  
+  # B) Webhooks → n8n → MCP (modo inteligente)
+  webhook_orchestration:
+    flow: "Chatwoot → n8n → MCP → Chatwoot"
+    webhook_endpoint: "https://n8n.smarterbot.cl/webhook/chatwoot-events"
+    security: "HMAC-SHA256"
+    vault_secret: "secret/chatwoot/hmac"
+    events:
+      - "message_created"
+      - "conversation_created"
+      - "conversation_updated"
+      - "conversation_status_changed"
+    n8n_workflows:
+      - "chatwoot-ocr-classify.json"
+      - "chatwoot-contact-sync.json"
+      - "chatwoot-message-responder.json"
+    mcp_integration:
+      - "Validación HMAC"
+      - "OCR de adjuntos (Vision API / Document AI / Gemini)"
+      - "Clasificación LLM (intent detection)"
+      - "Enrutamiento inteligente"
+      - "Audit logs (Redpanda)"
+    advantages:
+      - "Autonomía del sistema"
+      - "Procesamiento asíncrono"
+      - "Escalabilidad horizontal"
+      - "Conecta con SmarterMCP agents"
+  
+  # C) MCP Directo (planned for 2025)
+  mcp_direct:
+    agent_spec: "smarteros-specs/services/mcp/agents/chatwoot-mcp.yaml"
+    status: "pending-chatwoot-release"
+    capabilities:
+      - "Obtener conversaciones"
+      - "Resumir diálogos"
+      - "Clasificar urgencia"
+      - "Poner etiquetas automáticas"
+      - "Crear tareas en n8n"
+    llm_integration: "Gemini 1.5 Flash"
+    readiness: "spec-ready"
+
+# ============================================
+# DEPLOYMENT ARCHITECTURE
+# ============================================
+
+deployment:
+  platform: "Docker"
+  orchestrator: "Dokploy / Portainer"
+  hosting: "Hostinger VPS"
+  reverse_proxy: "Traefik"
+  
+  containers:
+    chatwoot:
+      image: "chatwoot/chatwoot:v3.14.0"
+      container_name: "chatwoot"
+      ports:
+        - "3000:3000"
+      volumes:
+        - "chatwoot_storage:/app/storage"
+        - "chatwoot_logs:/app/log"
+      environment:
+        RAILS_ENV: "production"
+        NODE_ENV: "production"
+        SECRET_KEY_BASE: "vault:secret/chatwoot/app#secret_key_base"
+        FRONTEND_URL: "https://chatwoot.smarterbot.cl"
+        INSTALLATION_NAME: "SmarterOS"
+        FORCE_SSL: "true"
+      depends_on:
+        - postgres
+        - redis
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.chatwoot.rule=Host(`chatwoot.smarterbot.cl`)"
+        - "traefik.http.routers.chatwoot.entrypoints=websecure"
+        - "traefik.http.routers.chatwoot.tls.certresolver=letsencrypt"
+        - "traefik.http.services.chatwoot.loadbalancer.server.port=3000"
+    
+    chatwoot_sidekiq:
+      image: "chatwoot/chatwoot:v3.14.0"
+      container_name: "chatwoot_sidekiq"
+      command: "bundle exec sidekiq -C config/sidekiq.yml"
+      volumes:
+        - "chatwoot_storage:/app/storage"
+        - "chatwoot_logs:/app/log"
+      environment:
+        RAILS_ENV: "production"
+        NODE_ENV: "production"
+        SECRET_KEY_BASE: "vault:secret/chatwoot/app#secret_key_base"
+      depends_on:
+        - postgres
+        - redis
+  
+  database:
+    type: "PostgreSQL"
+    version: "16"
+    container_name: "postgres"
+    database_name: "chatwoot_production"
+    port: "5432"
+    volumes:
+      - "postgres_data:/var/lib/postgresql/data"
+    backup:
+      enabled: true
+      frequency: "daily"
+      retention: "30d"
+      destination: "s3://smarteros-backups/chatwoot/"
+  
+  cache:
+    type: "Redis"
+    version: "7.2"
+    container_name: "redis"
+    port: "6379"
+    volumes:
+      - "redis_data:/data"
+    persistence: true
+  
+  networking:
+    traefik_labels:
+      - "traefik.http.routers.chatwoot.middlewares=secure-headers@file"
+      - "traefik.http.middlewares.chatwoot-ratelimit.ratelimit.average=100"
+      - "traefik.http.middlewares.chatwoot-ratelimit.ratelimit.burst=50"
+
+# ============================================
+# DATA ARCHITECTURE
+# ============================================
+
+data_location:
+  source_code: "NOT IN REPOSITORY"
+  note: "Chatwoot es un servicio externo. Repositorio SmarterOS solo contiene specs, integración y clientes API."
+  
+  repository_references:
+    specs: "smarteros-specs/services/chatwoot.yml"
+    integration_docs: "docs/CHATWOOT-N8N-WEBHOOK-FLOW.md"
+    api_client: "app.smarterbot.cl/lib/chatwoot-client.ts"
+    workflows: "app.smarterbot.cl/assets/workflows/mcp-*-chatwoot.json"
+  
+  infrastructure_location:
+    docker_container: "/var/lib/docker/containers/chatwoot"
+    postgres_data: "/var/lib/postgresql/data/chatwoot_production"
+    redis_data: "/var/lib/redis/data"
+    storage_files: "/opt/chatwoot/storage"
+    logs: "/opt/chatwoot/logs"
+  
+  vault_secrets:
+    - "secret/chatwoot/api"        # API tokens
+    - "secret/chatwoot/hmac"       # Webhook HMAC secrets
+    - "secret/chatwoot/user"       # Admin credentials
+    - "secret/n8n/chatwoot"        # n8n integration credentials
+    - "secret/chatwoot/app"        # Rails SECRET_KEY_BASE
+  
+  supabase_tables:
+    business_settings:
+      fields:
+        - "user_id (uuid)"
+        - "business_name (text)"
+        - "webhook_url (text) -- points to n8n"
+        - "chatwoot_account_id (int)"
+        - "chatwoot_inbox_id (int)"
+    contacts:
+      fields:
+        - "clerk_user_id (text)"
+        - "chatwoot_contact_id (int)"
+        - "rut (text)"
+        - "name (text)"
+        - "email (text)"
+        - "phone (text)"
+        - "synced_at (timestamp)"
+
+# ============================================
+# FEATURES & CAPABILITIES
+# ============================================
+
+features:
+  channels:
+    - name: "WhatsApp Business"
+      integration: "360Dialog / Twilio"
+      status: "active"
+      capabilities:
+        - "Mensajes entrantes/salientes"
+        - "Adjuntos (imágenes, documentos)"
+        - "Estados de lectura"
+        - "Plantillas pre-aprobadas"
+    
+    - name: "Email"
+      integration: "SMTP/IMAP"
+      status: "active"
+      capabilities:
+        - "Forward to inbox"
+        - "Reply tracking"
+        - "Attachments"
+    
+    - name: "Web Widget"
+      integration: "JavaScript SDK"
+      status: "active"
+      capabilities:
+        - "Real-time chat"
+        - "File uploads"
+        - "Typing indicators"
+        - "Conversation history"
+  
+  automation:
+    canned_responses: true
+    auto_assignment: true
+    business_hours: true
+    sla_policies: true
+    macros: true
+  
+  multi_tenancy:
+    accounts: "multiple"
+    inboxes_per_account: "unlimited"
+    agents_per_account: "unlimited"
+    custom_attributes: true
+    labels: true
+    teams: true
+  
+  integrations:
+    n8n: "active"
+    mcp: "planned"
+    odoo: "via n8n"
+    shopify: "via webhooks"
+    metabase: "analytics"
+
+# ============================================
+# WEBHOOK CONFIGURATION
+# ============================================
+
+webhooks:
+  outbound:
+    url: "https://n8n.smarterbot.cl/webhook/chatwoot-events"
+    method: "POST"
+    security: "HMAC-SHA256"
+    headers:
+      - "X-Chatwoot-Signature: sha256=<hmac>"
+      - "Content-Type: application/json"
+    events:
+      message_created:
+        description: "Mensaje nuevo en conversación"
+        payload_example: |
+          {
+            "event": "message_created",
+            "id": 12345,
+            "content": "Hola, necesito ayuda",
+            "inbox_id": 1,
+            "conversation_id": 678,
+            "sender": {
+              "id": 901,
+              "name": "Cliente Test",
+              "type": "contact"
+            },
+            "attachments": [
+              {
+                "file_type": "image",
+                "data_url": "https://chatwoot.smarterbot.cl/rails/active_storage/blobs/.../factura.jpg"
+              }
+            ]
+          }
+      
+      conversation_created:
+        description: "Conversación nueva iniciada"
+      
+      conversation_updated:
+        description: "Estado o atributos actualizados"
+      
+      conversation_status_changed:
+        description: "Cambio de estado (open, pending, resolved)"
+  
+  inbound:
+    send_message:
+      endpoint: "POST /api/v1/accounts/{account_id}/conversations/{conversation_id}/messages"
+      authentication: "Bearer {api_token}"
+      payload_example: |
+        {
+          "content": "Respuesta automática del sistema",
+          "message_type": "outgoing",
+          "private": false,
+          "content_attributes": {
+            "automated": true,
+            "source": "n8n-mcp"
+          }
+        }
+    
+    update_custom_attributes:
+      endpoint: "POST /api/v1/accounts/{account_id}/conversations/{conversation_id}/update_custom_attributes"
+      authentication: "Bearer {api_token}"
+      payload_example: |
+        {
+          "custom_attributes": {
+            "ocr_text": "RUT: 12345678-9, Monto: $150.000",
+            "ocr_method": "google_vision",
+            "intent": "factura_pago",
+            "confidence": 0.95
+          }
+        }
+
+# ============================================
+# SECURITY & COMPLIANCE
+# ============================================
+
+security:
+  authentication:
+    web_ui: "Email/Password + 2FA (planned)"
+    api: "Bearer Token (per agent)"
+    webhooks: "HMAC-SHA256"
+  
+  authorization:
+    rbac: true
+    roles:
+      - "administrator"
+      - "agent"
+      - "viewer"
+    permissions:
+      - "manage_conversations"
+      - "manage_contacts"
+      - "manage_team"
+      - "manage_settings"
+  
+  data_protection:
+    encryption_at_rest: true
+    encryption_in_transit: "TLS 1.3"
+    gdpr_compliance: true
+    data_retention: "configurable"
+    pii_redaction: "manual"
+  
+  audit_logs:
+    chatwoot_internal: "Rails logs + Postgres audit"
+    redpanda_external: "smarteros.audit.chatwoot"
+
+# ============================================
+# MONITORING & OBSERVABILITY
+# ============================================
+
+monitoring:
+  health_checks:
+    endpoint: "https://chatwoot.smarterbot.cl/health"
+    interval: "5m"
+    expected_status: 200
+  
+  metrics:
+    conversations:
+      - "total_conversations"
+      - "open_conversations"
+      - "resolved_conversations"
+      - "average_first_response_time"
+      - "average_resolution_time"
+    
+    messages:
+      - "total_messages"
+      - "messages_per_channel"
+      - "automated_responses"
+    
+    agents:
+      - "active_agents"
+      - "agent_utilization"
+      - "agent_response_time"
+  
+  logging:
+    application_logs: "/opt/chatwoot/logs/production.log"
+    sidekiq_logs: "/opt/chatwoot/logs/sidekiq.log"
+    webhook_logs: "Chatwoot UI → Settings → Webhooks → Logs"
+    n8n_execution_logs: "https://n8n.smarterbot.cl/executions"
+  
+  alerts:
+    - condition: "webhook_failure_rate > 5%"
+      severity: "high"
+      notification: "slack + email"
+    
+    - condition: "average_response_time > 30s"
+      severity: "medium"
+      notification: "slack"
+    
+    - condition: "database_connections > 80%"
+      severity: "high"
+      notification: "pagerduty"
+
+# ============================================
+# BUSINESS LOGIC
+# ============================================
+
+business_value:
+  customer_facing:
+    - "Inbox inteligente unificado (WhatsApp + Email + Web)"
+    - "Respuestas automáticas con OCR + LLM"
+    - "Clasificación de intenciones (factura, pedido, consulta)"
+    - "Enrutamiento a agentes humanos cuando necesario"
+    - "Historial completo de conversaciones"
+  
+  operational:
+    - "Multi-tenant (un inbox por cliente SmarterOS)"
+    - "Escalabilidad horizontal (Sidekiq workers)"
+    - "Integración con Odoo (sync contacts, orders)"
+    - "Integración con Shopify (order tracking)"
+    - "Analytics en Metabase (conversation metrics)"
+  
+  strategic:
+    - "Frontend de contacto del stack SmarterOS"
+    - "n8n como autopiloto de respuestas"
+    - "MCP como cerebro de decisiones"
+    - "Habilitador de ventas conversacionales"
+
+# ============================================
+# DEVELOPMENT & TESTING
+# ============================================
+
+development:
+  local_setup:
+    docker_compose: "dkcompose/chatwoot/docker-compose.yml"
+    environment: ".env.local"
+    seed_data: "rails db:seed"
+  
+  testing:
+    webhook_test:
+      tool: "curl / Postman"
+      endpoint: "https://n8n.smarterbot.cl/webhook/chatwoot-events"
+      headers:
+        - "X-Chatwoot-Signature: sha256=..."
+        - "Content-Type: application/json"
+    
+    api_test:
+      tool: "app.smarterbot.cl/lib/chatwoot-client.ts"
+      methods:
+        - "getConversations()"
+        - "sendMessage()"
+        - "createContact()"
+
+# ============================================
+# ROADMAP
+# ============================================
+
+roadmap:
+  q1_2025:
+    - status: "done"
+      item: "Deploy Chatwoot en Hostinger/Dokploy"
+    - status: "done"
+      item: "Configurar WhatsApp Business (360Dialog)"
+    - status: "done"
+      item: "Crear lib/chatwoot-client.ts"
+    - status: "in-progress"
+      item: "Integración webhooks → n8n → MCP"
+  
+  q2_2025:
+    - status: "planned"
+      item: "OCR workflow (Vision API + Gemini)"
+    - status: "planned"
+      item: "LLM classification (intent detection)"
+    - status: "planned"
+      item: "Auto-respuestas inteligentes"
+  
+  q3_2025:
+    - status: "planned"
+      item: "MCP directo (cuando Chatwoot lo soporte oficialmente)"
+    - status: "planned"
+      item: "Agent chatwoot-mcp.yaml"
+  
+  q4_2025:
+    - status: "planned"
+      item: "Analytics avanzado (Metabase dashboards)"
+    - status: "planned"
+      item: "Multi-idioma (ES/EN/PT)"
+
+# ============================================
+# REFERENCES
+# ============================================
+
+references:
+  documentation:
+    - "https://www.chatwoot.com/docs/"
+    - "https://www.chatwoot.com/docs/product/channels/api/send-messages"
+    - "https://www.chatwoot.com/docs/product/others/webhooks"
+  
+  internal_docs:
+    - "docs/CHATWOOT-N8N-WEBHOOK-FLOW.md"
+    - "smarteros-specs/MULTI-CLOUD-ARCHITECTURE.md"
+    - "smarteros-specs/IDENTITY-AUDIT-SPEC.md"
+  
+  related_services:
+    - "smarteros-specs/services/n8n.yml"
+    - "smarteros-specs/services/mcp.yml"
+    - "smarteros-specs/services/vault.yml"

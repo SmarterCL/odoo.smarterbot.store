@@ -1,0 +1,395 @@
+# 🚀 Vercel MCP Server Specification
+
+version: "1.0"
+provider: "vercel"
+category: "deployment"
+tier: 5
+updated: "2025-11-17"
+
+metadata:
+  name: "Vercel MCP Server"
+  description: "Deploy and manage MCP servers on Vercel with serverless functions"
+  repository: "https://github.com/vercel-labs/mcp-on-vercel"
+  npm_package: "mcp-handler"
+  license: "MIT"
+  official: true
+  
+deployment:
+  type: "vercel-functions"
+  template: "https://vercel.com/templates/other/model-context-protocol-mcp-with-vercel-functions"
+  fluid_compute: true
+  max_duration: 800 # Pro/Enterprise
+  runtime: "nodejs20.x"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Authentication
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+auth:
+  methods:
+    - "api-token"
+    - "oauth"
+  
+  vault:
+    path: "smarteros/mcp/vercel"
+    keys:
+      - "vercel_token"
+      - "vercel_team_id"
+      - "vercel_project_id"
+    policy: "mcp-vercel-read"
+  
+  setup: |
+    1. Create Vercel API Token at https://vercel.com/account/tokens
+    2. Store in Vault:
+       vault kv put smarteros/mcp/vercel \
+         vercel_token=xxx \
+         vercel_team_id=xxx \
+         vercel_project_id=xxx
+    3. Apply policy:
+       vault policy write mcp-vercel-read vault/policies/mcp-vercel-read.hcl
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Endpoints
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+endpoints:
+  mcp_handler:
+    path: "/mcp"
+    transport: "StreamableHTTP"
+    description: "Main MCP endpoint for tools, prompts, resources"
+  
+  sse:
+    path: "/sse"
+    transport: "SSE"
+    description: "Server-Sent Events endpoint for streaming"
+  
+  health:
+    path: "/"
+    description: "Health check endpoint"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Tools Implementation Pattern
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+implementation:
+  language: "TypeScript"
+  sdk: "@modelcontextprotocol/sdk"
+  handler: "mcp-handler"
+  validation: "zod"
+  
+  example: |
+    // api/server.ts
+    import { createMcpHandler } from "mcp-handler";
+    import { z } from "zod";
+    
+    const handler = createMcpHandler((server) => {
+      server.tool(
+        "tool_name",
+        "Tool description",
+        { param: z.string() },
+        async ({ param }) => {
+          return {
+            content: [{ type: "text", text: `Result: ${param}` }],
+          };
+        }
+      );
+    });
+    
+    export { handler as GET, handler as POST, handler as DELETE };
+  
+  features:
+    - "Automatic request/response handling"
+    - "Zod schema validation"
+    - "Streaming support via SSE"
+    - "Built-in error handling"
+    - "TypeScript type safety"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Agent Capabilities
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+agents:
+  executor-codex:
+    capabilities:
+      deployment:
+        - "deploy_mcp_server"
+        - "update_environment_variables"
+        - "check_deployment_status"
+        - "view_deployment_logs"
+      
+      management:
+        - "list_projects"
+        - "create_project"
+        - "delete_deployment"
+      
+    use_cases:
+      - "Deploy custom MCP servers for SmarterOS services"
+      - "Update API keys via environment variables"
+      - "Monitor deployment health"
+      - "Rollback failed deployments"
+  
+  director-gemini:
+    capabilities:
+      monitoring:
+        - "view_analytics"
+        - "check_function_performance"
+        - "analyze_errors"
+      
+    use_cases:
+      - "Performance optimization recommendations"
+      - "Cost analysis"
+      - "Error pattern detection"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Use Cases for SmarterOS
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+use_cases:
+  clerk_integration:
+    description: "Deploy Clerk auth MCP wrapper on Vercel"
+    tools:
+      - "clerk_users_list"
+      - "clerk_user_get"
+      - "clerk_session_validate"
+    environment_variables:
+      - "CLERK_PUBLISHABLE_KEY"
+      - "CLERK_SECRET_KEY"
+    endpoint: "https://clerk-mcp.smarterbot.cl/mcp"
+  
+  shopify_integration:
+    description: "Deploy Shopify MCP wrapper for product management"
+    tools:
+      - "shopify_products_list"
+      - "shopify_orders_get"
+      - "shopify_inventory_check"
+    environment_variables:
+      - "SHOPIFY_API_KEY"
+      - "SHOPIFY_API_SECRET"
+      - "SHOPIFY_SHOP_URL"
+    endpoint: "https://shopify-mcp.smarterbot.cl/mcp"
+  
+  supabase_wrapper:
+    description: "Deploy Supabase query MCP for unified data access"
+    tools:
+      - "supabase_query"
+      - "supabase_rpc"
+      - "supabase_storage_upload"
+    environment_variables:
+      - "SUPABASE_URL"
+      - "SUPABASE_SERVICE_ROLE_KEY"
+    endpoint: "https://supabase-mcp.smarterbot.cl/mcp"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Configuration
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+configuration:
+  vercel_json:
+    example: |
+      {
+        "functions": {
+          "api/**/*.ts": {
+            "maxDuration": 800,
+            "memory": 1024
+          }
+        }
+      }
+  
+  package_json:
+    dependencies:
+      - "@modelcontextprotocol/sdk"
+      - "mcp-handler"
+      - "zod"
+    
+    scripts:
+      dev: "vercel dev"
+      deploy: "vercel --prod"
+  
+  environment_variables:
+    required:
+      - "VERCEL_TOKEN"
+    
+    optional:
+      - "VERCEL_TEAM_ID"
+      - "VERCEL_PROJECT_ID"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Client Integration
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+client_integration:
+  mcp_config:
+    example: |
+      {
+        "mcpServers": {
+          "custom-server": {
+            "url": "https://your-deployment.vercel.app/mcp"
+          }
+        }
+      }
+  
+  transports:
+    streamable_http:
+      description: "Recommended for Vercel deployments"
+      example: |
+        import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+        
+        const transport = new StreamableHTTPClientTransport(
+          new URL("https://your-deployment.vercel.app/mcp")
+        );
+    
+    sse:
+      description: "Server-Sent Events for streaming"
+      example: |
+        import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+        
+        const transport = new SSEClientTransport(
+          new URL("https://your-deployment.vercel.app/sse")
+        );
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Rate Limits & Costs
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+limits:
+  hobby_plan:
+    function_invocations: "100,000/month"
+    execution_time: "100 hours/month"
+    bandwidth: "100 GB/month"
+    max_duration: 10 # seconds
+  
+  pro_plan:
+    function_invocations: "1,000,000/month"
+    execution_time: "1,000 hours/month"
+    bandwidth: "1 TB/month"
+    max_duration: 900 # seconds (with Fluid Compute)
+  
+  enterprise:
+    custom: true
+    contact_sales: true
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Monitoring & Debugging
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+monitoring:
+  vercel_dashboard:
+    - "Real-time function logs"
+    - "Invocation metrics"
+    - "Error tracking"
+    - "Performance analytics"
+  
+  local_development:
+    command: "vercel dev"
+    hot_reload: true
+    environment: ".env.local"
+  
+  testing:
+    script: "scripts/test-client.mjs"
+    usage: "node scripts/test-client.mjs https://your-deployment.vercel.app"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Best Practices
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+best_practices:
+  performance:
+    - "Enable Fluid Compute for long-running operations"
+    - "Cache static data in function scope"
+    - "Use edge functions for low-latency operations"
+    - "Optimize cold start time with minimal dependencies"
+  
+  security:
+    - "Store secrets in Vercel environment variables"
+    - "Validate all input parameters with Zod"
+    - "Implement rate limiting for public endpoints"
+    - "Use API tokens for authentication"
+  
+  cost_optimization:
+    - "Monitor function execution time"
+    - "Implement request caching"
+    - "Use edge functions for simple operations"
+    - "Set appropriate max duration limits"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Deployment Checklist
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+deployment_checklist:
+  - title: "Enable Fluid Compute"
+    required: true
+    tier: "Pro/Enterprise"
+  
+  - title: "Configure vercel.json"
+    required: true
+    action: "Set maxDuration based on plan"
+  
+  - title: "Set environment variables"
+    required: true
+    location: "Vercel Dashboard > Project > Settings > Environment Variables"
+  
+  - title: "Test locally"
+    required: true
+    command: "vercel dev"
+  
+  - title: "Deploy to production"
+    required: true
+    command: "vercel --prod"
+  
+  - title: "Configure custom domain"
+    required: false
+    example: "mcp.smarterbot.cl"
+  
+  - title: "Monitor initial deployment"
+    required: true
+    location: "Vercel Dashboard > Deployments > Logs"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Integration with SmarterOS
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+smarteros_integration:
+  registry_entry:
+    tier: 5
+    category: "devops"
+    primary_agent: "executor-codex"
+    secondary_agents: ["director-gemini"]
+  
+  vault_policy: "mcp-vercel-read"
+  
+  workflows:
+    deploy_mcp_wrapper:
+      steps:
+        - "Clone template from vercel-labs/mcp-on-vercel"
+        - "Implement custom tools in api/server.ts"
+        - "Add environment variables via Vault"
+        - "Deploy with vercel --prod"
+        - "Update MCP registry with new endpoint"
+        - "Test integration with mcp-remote"
+    
+    update_environment:
+      steps:
+        - "Fetch secrets from Vault"
+        - "Update Vercel environment variables via API"
+        - "Trigger redeployment"
+        - "Verify health check"
+
+notes: |
+  Vercel MCP Server permite deployar MCP servers como Vercel Functions,
+  ideal para exponer servicios de SmarterOS (Clerk, Shopify, Supabase)
+  como endpoints MCP accesibles vía mcp-remote.
+  
+  Ventajas:
+  - Zero-config deployment
+  - Automatic HTTPS
+  - Global CDN
+  - Built-in monitoring
+  - Serverless scaling
+  
+  Usar para:
+  - Wrappers de APIs externas (Clerk, Shopify)
+  - Agregación de datos (multi-service queries)
+  - Transformaciones complejas
+  - Endpoints públicos con rate limiting
+  
+  Template oficial: https://vercel.com/templates/other/model-context-protocol-mcp-with-vercel-functions

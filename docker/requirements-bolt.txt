@@ -1,0 +1,17 @@
+# Python dependencies for Bolt Lab container
+# Purpose: AI-powered documentation generation
+# Last updated: 2025-11-23
+
+# AI & OpenAI
+openai==1.43.0
+
+# HTTP client
+httpx==0.27.0
+
+# Utilities
+python-dotenv==1.0.0
+pydantic==2.5.0
+
+# CLI enhancements
+rich==13.7.0
+click==8.1.7

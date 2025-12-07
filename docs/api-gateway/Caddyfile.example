@@ -1,0 +1,193 @@
+# Caddy v2 Configuration for SmarterBot Infrastructure
+# Auto HTTPS with Let's Encrypt
+
+{
+    # Global options
+    email admin@smarterbot.cl
+    # Disable automatic HTTPS for IP addresses
+    auto_https disable_redirects
+}
+
+# Direct IP access - redirect to main domain
+http://89.116.23.167 {
+    redir https://dokploy.smarterbot.store{uri} permanent
+}
+
+# Metabase - KPI Dashboard
+kpi.smarterbot.cl {
+    reverse_proxy smarteros-metabase:3000
+    encode gzip
+    log {
+        output file /var/log/caddy/kpi.log
+    }
+}
+
+# Chatwoot - Customer Support
+chatwoot.smarterbot.cl {
+    reverse_proxy smarter-chatwoot:3000
+    encode gzip
+    log {
+        output file /var/log/caddy/chatwoot.log
+    }
+}
+
+# Botpress - Chat Bot
+chat.smarterbot.cl {
+    reverse_proxy smarter-botpress:3000
+    encode gzip
+    log {
+        output file /var/log/caddy/chat.log
+    }
+}
+
+# n8n - Workflow Automation
+n8n.smarterbot.cl {
+    reverse_proxy smarter-n8n:5678
+    encode gzip
+    log {
+        output file /var/log/caddy/n8n.log
+    }
+}
+
+# Odoo - ERP
+odoo.smarterbot.cl {
+    reverse_proxy smarter-odoo:8069
+    encode gzip
+    log {
+        output file /var/log/caddy/odoo.log
+    }
+}
+
+# Portainer - Container Management
+portainer.smarterbot.cl {
+    reverse_proxy smarter-portainer:9000
+    encode gzip
+    log {
+        output file /var/log/caddy/portainer.log
+    }
+}
+
+# Dokploy - Deployment Platform
+dokploy.smarterbot.cl, dokploy.smarterbot.store {
+    reverse_proxy dokploy:3000 {
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Real-IP {remote_host}
+    }
+    encode gzip
+    log {
+        output file /var/log/caddy/dokploy.log
+    }
+}
+
+# Nexa - AI Server
+ai.smarterbot.store {
+    reverse_proxy nexa-server:8000
+    encode gzip
+    log {
+        output file /var/log/caddy/ai.log
+    }
+}
+
+# BlogBowl - Marketing & Content Platform
+mkt.smarterbot.cl, mkt.smarterbot.store {
+    reverse_proxy smarteros-blogbowl:3000
+    encode gzip
+    log {
+        output file /var/log/caddy/mkt.log
+    }
+}
+
+# Vault MCP Server - Model Context Protocol for Vault
+mcp.smarterbot.cl, mcp.smarterbot.store {
+    reverse_proxy smarteros-vault-mcp:8080
+    encode gzip
+    
+    header {
+        X-Frame-Options "DENY"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+    
+    log {
+        output file /var/log/caddy/mcp.log
+    }
+}
+
+# API Gateway - Centralized API Access with API Key Authentication
+# Auth: Bearer token required (temporary until Traefik migration)
+# API Key: Use header "Authorization: Bearer <api-key>"
+api.smarterbot.cl, api.smarterbot.store {
+    
+    # Health check endpoint (public, no auth)
+    handle /health {
+        respond "API Gateway OK" 200
+    }
+    
+    # All other endpoints require API key
+    @authorized {
+        header Authorization "Bearer REPLACE_WITH_ACTUAL_API_KEY"
+    }
+    
+    handle @authorized {
+        # Dokploy API - Deployment & Infrastructure
+        handle_path /dokploy/* {
+            reverse_proxy dokploy:3000
+        }
+        
+        # n8n API - Workflow Automation
+        handle_path /n8n/* {
+            reverse_proxy smarter-n8n:5678
+        }
+        
+        # Chatwoot API - Customer Support
+        handle_path /chatwoot/* {
+            reverse_proxy smarter-chatwoot:3000
+        }
+        
+        # Metabase API - Analytics & KPIs
+        handle_path /metabase/* {
+            reverse_proxy smarteros-metabase:3000
+        }
+        
+        # Odoo API - ERP
+        handle_path /odoo/* {
+            reverse_proxy smarter-odoo:8069
+        }
+        
+        # Portainer API - Container Management
+        handle_path /portainer/* {
+            reverse_proxy smarter-portainer:9000
+        }
+        
+        # Botpress API - Chatbot
+        handle_path /botpress/* {
+            reverse_proxy smarter-botpress:3000
+        }
+        
+        # Default: Dokploy API (backward compatibility)
+        handle {
+            reverse_proxy dokploy:3000
+        }
+    }
+    
+    # Unauthorized - missing or invalid API key
+    handle {
+        respond "Unauthorized: Invalid or missing API key. Use header: Authorization: Bearer <api-key>" 401
+    }
+    
+    encode gzip
+    
+    header {
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Access-Control-Allow-Origin "*"
+        Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+        Access-Control-Allow-Headers "Authorization, Content-Type"
+    }
+    
+    log {
+        output file /var/log/caddy/api.log
+    }
+}

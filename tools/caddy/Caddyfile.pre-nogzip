@@ -1,0 +1,164 @@
+# Caddy v2 Configuration for SmarterBot Infrastructure
+# Auto HTTPS with Let's Encrypt
+
+{
+    # Global options
+    email admin@smarterbot.cl
+    # Disable automatic HTTPS for IP addresses
+    auto_https disable_redirects
+}
+
+# Direct IP access - redirect to main domain
+http://89.116.23.167 {
+    redir https://dokploy.smarterbot.store{uri} permanent
+}
+
+# Metabase - KPI Dashboard
+kpi.smarterbot.cl, kpi.smarterbot.store {
+    reverse_proxy smarteros-metabase:3000
+    encode gzip
+    log {
+        output file /var/log/caddy/kpi.log
+    }
+}
+
+# Chatwoot - CRM Customer Support (WhatsApp, Sales, Support)
+chatwoot.smarterbot.cl, crm.smarterbot.cl, chatwoot.smarterbot.store, crm.smarterbot.store {
+    reverse_proxy smarter-chatwoot:3000
+    encode gzip
+    log {
+        output file /var/log/caddy/chatwoot-crm.log
+    }
+}
+
+# Botpress - Chat Bot
+chat.smarterbot.cl {
+    reverse_proxy smarter-botpress:3000
+    encode gzip
+    log {
+        output file /var/log/caddy/chat.log
+    }
+}
+
+# n8n - Workflow Automation
+n8n.smarterbot.cl {
+    reverse_proxy smarter-n8n:5678
+    encode gzip
+    log {
+        output file /var/log/caddy/n8n.log
+    }
+}
+
+# Odoo - ERP (Operations, Accounting, Expenses)
+odoo.smarterbot.cl, erp.smarterbot.cl, odoo.smarterbot.store, erp.smarterbot.store {
+    reverse_proxy smarter-odoo:8069
+    encode gzip
+    log {
+        output file /var/log/caddy/odoo-erp.log
+    }
+}
+
+# Portainer - Container Management
+portainer.smarterbot.cl {
+    reverse_proxy smarter-portainer:9000
+    encode gzip
+    log {
+        output file /var/log/caddy/portainer.log
+    }
+}
+
+# Dokploy - Deployment Platform
+dokploy.smarterbot.cl, dokploy.smarterbot.store {
+    reverse_proxy dokploy:3000 {
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Real-IP {remote_host}
+    }
+    encode gzip
+    log {
+        output file /var/log/caddy/dokploy.log
+    }
+}
+
+# Nexa - AI Server
+ai.smarterbot.store {
+    reverse_proxy nexa-server:8000
+    encode gzip
+    log {
+        output file /var/log/caddy/ai.log
+    }
+}
+
+# BlogBowl - Marketing & Content Platform
+mkt.smarterbot.cl, mkt.smarterbot.store {
+    reverse_proxy smarteros-blogbowl:3000
+    encode gzip
+    log {
+        output file /var/log/caddy/mkt.log
+    }
+}
+
+# MCP Registry - Model Context Protocol Registry & Documentation
+mcp.smarterbot.cl, mcp.smarterbot.store {
+    reverse_proxy mcp-registry-web:80
+    encode gzip
+    
+    header {
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+    
+    log {
+        output file /var/log/caddy/mcp.log
+    }
+}
+
+# Vault MCP Server - API Endpoint
+vault-mcp.smarterbot.cl {
+    reverse_proxy smarteros-vault-mcp:8080
+    encode gzip
+    
+    header {
+        X-Frame-Options "DENY"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+    
+    log {
+        output file /var/log/caddy/vault-mcp.log
+    }
+}
+
+# Vault MCP - Key Management System (mainkey)
+mainkey.smarterbot.cl, mainkey.smarterbot.store {
+    rewrite * /mcp{uri}
+    reverse_proxy smarteros-vault-mcp:8080
+    encode gzip
+    
+    header {
+        X-Frame-Options "DENY"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+    
+    log {
+        output file /var/log/caddy/mainkey-vault.log
+    }
+}
+
+# API Gateway - Proxy to Traefik (with Vault Auth)
+# Architecture: Caddy (SSL/443) → Traefik (Auth/8080) → Services
+# Auth: Vault forward auth via vault-auth-validator in Traefik
+api.smarterbot.cl, api.smarterbot.store {
+    # API Gateway - Vault Auth Validator
+    reverse_proxy vault-auth-validator:8080
+    
+    encode gzip
+    
+    log {
+        output file /var/log/caddy/api-gateway.log
+    }
+}
+

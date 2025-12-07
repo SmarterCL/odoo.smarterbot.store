@@ -1,0 +1,176 @@
+# SmarterOS Specification Index
+# Este archivo es el punto de entrada a todo el OS
+
+version: "0.1.0"
+codename: "Genesis"
+release_date: "2025-01-15"
+status: "development"
+
+# Metadata del OS
+metadata:
+  name: "SmarterOS"
+  description: "Multi-tenant business automation OS"
+  author: "SmarterCL"
+  license: "Proprietary"
+  repository: "https://github.com/SmarterCL/smarteros-specs"
+
+# Estructura del spec-repo
+structure:
+  tenants: "tenants/"          # Definiciones de tenants
+  services: "services/"        # Specs de microservicios
+  infra: "infra/"             # Infraestructura (VPS, DNS, etc)
+  mcp: "mcp/"                 # Configuración de MCPs
+  env: "env/"                 # Variables de entorno versionadas
+  decisions: "decisions/"      # ADR (Architecture Decision Records)
+  playbooks: "playbooks/"      # Runbooks y playbooks de operación
+
+# Arquitectura del OS
+architecture:
+  frontend:
+    - app.smarterbot.cl       # SmarterOS Hub (Dashboard principal)
+    - chatwoot.smarterbot.cl  # Mensajería unificada (WhatsApp, Email, Web)
+    - mkt.smarterbot.cl       # Marketing site
+    - store.smarterbot.cl     # Marketplace de skills
+    - docs.smarterbot.cl      # Documentación técnica
+  
+  backend:
+    - n8n                     # Workflow automation
+    - supabase                # Database + Auth
+    - botpress                # Conversational AI
+    - odoo                    # ERP
+    - chatwoot                # Customer support
+  
+  infrastructure:
+    - hostinger_vps           # VPS principal
+    - cloudflare              # DNS + CDN
+    - vercel                  # Frontend hosting
+    - dokploy                 # Container orchestration
+    - traefik                 # Reverse proxy
+
+# MCPs disponibles
+mcps:
+  github:
+    enabled: true
+    built_in: true
+  context7:
+    enabled: true
+    built_in: true
+  cloudflare:
+    enabled: true
+    config: "mcp/cloudflare.yml"
+  hostinger:
+    enabled: true
+    config: "mcp/hostinger.yml"
+  shopify:
+    enabled: true
+    config: "mcp/shopify.yml"
+  supabase:
+    enabled: true
+    config: "mcp/supabase.yml"
+  docker:
+    enabled: true
+    built_in: true
+
+# Tenants registrados
+tenants:
+  active_count: 0
+  registry: "tenants/registry.yml"
+  template: "tenants/template.yml"
+
+# Servicios core
+services:
+  registry: "services/registry.yml"
+  health_check_url: "https://status.smarterbot.cl"
+
+# Infraestructura
+infrastructure:
+  vps:
+    provider: "hostinger"
+    spec: "infra/vps.yml"
+  dns:
+    provider: "cloudflare"
+    spec: "infra/dns.yml"
+  containers:
+    orchestrator: "dokploy"
+    spec: "infra/containers.yml"
+
+# Runtime modes
+runtime:
+  current_mode: "development"
+  modes:
+    - development
+    - staging
+    - production
+  config: "smos-runtime-mode.env"
+
+# Versioning
+versioning:
+  scheme: "semver"
+  current: "0.1.0"
+  previous: null
+  changelog: "CHANGELOG.md"
+  migrations: "migrations/"
+
+# Deployment
+deployment:
+  strategy: "blue-green"
+  rollback_enabled: true
+  auto_backup: true
+  health_check_required: true
+
+# Monitoring & Observability
+monitoring:
+  metabase_url: "https://ai.smarteros.cl"
+  sentry_enabled: false
+  log_aggregation: "docker logs"
+  metrics: "infra/metrics.yml"
+
+# Security
+security:
+  secrets_management: "env-files"
+  ssl_provider: "letsencrypt"
+  firewall: "hostinger-firewall"
+  auth_provider: "clerk"
+
+# Integrations
+integrations:
+  - name: "Shopify"
+    type: "e-commerce"
+    multi_tenant: true
+  - name: "Odoo"
+    type: "erp"
+    multi_tenant: true
+  - name: "Chatwoot"
+    type: "support"
+    multi_tenant: true
+  - name: "Botpress"
+    type: "ai-agent"
+    multi_tenant: true
+
+# Decision Log
+decisions:
+  total: 0
+  latest: null
+  directory: "decisions/"
+  format: "ADR (Architecture Decision Records)"
+
+# Maintenance
+maintenance:
+  backup_schedule: "daily 2am"
+  backup_retention: "7 days"
+  update_schedule: "manual"
+  health_check_interval: "30 minutes"
+
+# CLI Commands
+cli:
+  namespace: "smos"
+  commands:
+    - deploy
+    - rollback
+    - create
+    - update
+    - sync
+    - restore
+    - status
+    - logs
+  config: "smos-cli.yml"

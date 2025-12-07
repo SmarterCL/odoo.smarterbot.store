@@ -1,0 +1,211 @@
+# smarteros-specs/services/vault-mcp-server.yml
+apiVersion: smarteros/v1
+kind: Service
+metadata:
+  name: vault-mcp-server
+  displayName: Vault MCP Server
+  description: >
+    Model Context Protocol (MCP) server that provides integration with HashiCorp Vault
+    for managing secrets, mounts, PKI certificates, and key-value stores.
+    Enables AI agents and LLMs to interact securely with Vault infrastructure.
+  tags:
+    - mcp
+    - vault
+    - secrets
+    - security
+    - ai-integration
+spec:
+  category: security
+  tenantMode: multi-tenant
+
+  ingress:
+    enabled: true
+    host: mcp.smarterbot.cl
+    path: /mcp
+    protocol: https
+
+  runtime:
+    type: docker
+    serviceName: vault-mcp-server
+    containerPort: 8080
+    healthcheck:
+      path: /mcp
+      intervalSeconds: 30
+      timeoutSeconds: 10
+      retries: 3
+
+  network:
+    internalName: smarter-net
+    exposeInternallyAs: http://vault-mcp-server:8080
+
+  dependencies:
+    - name: vault
+      required: true
+    - name: n8n
+      required: false
+    - name: nexa-runtime
+      required: false
+
+  config:
+    transport:
+      mode: http
+      port: 8080
+      endpoint: /mcp
+    security:
+      corsMode: strict
+      allowedOrigins:
+        - https://mcp.smarterbot.cl
+        - https://mcp.smarterbot.store
+        - https://n8n.smarterbot.cl
+      rateLimits:
+        global: "50:100"
+        perSession: "10:20"
+    vault:
+      address: http://89.116.23.167:8200
+      namespace: ""
+
+  interfaces:
+    - name: mcp-http
+      type: http
+      basePath: /mcp
+      description: >
+        Model Context Protocol server for Vault operations.
+        Compatible with Claude Desktop, VS Code, and other MCP clients.
+
+  mcp:
+    tools:
+      # Mount Management
+      - name: vault.create_mount
+        description: Create a new mount in Vault (KV v1, KV v2, PKI)
+        parameters:
+          - type: string (kv, kv2, pki)
+          - path: string
+          - description: string (optional)
+      
+      - name: vault.list_mounts
+        description: List all mounts in Vault
+      
+      - name: vault.delete_mount
+        description: Delete a mount in Vault
+        parameters:
+          - path: string
+      
+      # Key-Value Operations
+      - name: vault.write_secret
+        description: Write a secret to a KV mount
+        parameters:
+          - mount: string
+          - path: string
+          - key: string
+          - value: string
+      
+      - name: vault.read_secret
+        description: Read a secret from a KV mount
+        parameters:
+          - mount: string
+          - path: string
+      
+      - name: vault.list_secrets
+        description: List secrets in a KV mount under a path
+        parameters:
+          - mount: string
+          - path: string (optional)
+      
+      - name: vault.delete_secret
+        description: Delete secrets or keys in a KV mount
+        parameters:
+          - mount: string
+          - path: string
+          - key: string (optional)
+      
+      # PKI Operations
+      - name: vault.enable_pki
+        description: Enable and configure PKI secrets engine
+        parameters:
+          - path: string
+          - description: string (optional)
+      
+      - name: vault.create_pki_issuer
+        description: Create a new PKI issuer
+        parameters:
+          - mount: string
+          - name: string
+          - certificate: string (PEM)
+          - privateKey: string (PEM)
+      
+      - name: vault.list_pki_issuers
+        description: List all PKI issuers
+        parameters:
+          - mount: string
+      
+      - name: vault.create_pki_role
+        description: Create PKI role for issuing certificates
+        parameters:
+          - mount: string
+          - name: string
+          - config: object
+      
+      - name: vault.issue_pki_certificate
+        description: Issue a new certificate using a PKI role
+        parameters:
+          - mount: string
+          - role: string
+          - commonName: string
+          - altNames: array (optional)
+          - ipSans: array (optional)
+          - ttl: string (optional)
+
+  integration:
+    clients:
+      - name: n8n
+        description: >
+          n8n workflows can call Vault MCP tools to manage secrets dynamically.
+          Use HTTP Request node pointing to http://vault-mcp-server:8080/mcp
+      
+      - name: nexa-runtime
+        description: >
+          AI agents in Nexa can use MCP tools to read/write secrets per tenant.
+      
+      - name: vscode
+        description: >
+          VS Code MCP extension can connect to manage Vault from IDE.
+          Configure in .vscode/mcp.json with url: http://localhost:8081/mcp
+      
+      - name: claude-desktop
+        description: >
+          Claude Desktop can interact with Vault via MCP protocol.
+
+  deployment:
+    dokploy:
+      stack: vault-mcp
+      composeFile: docker-compose-vault-mcp.yml
+      environmentVariables:
+        - VAULT_ADDR
+        - VAULT_TOKEN
+        - VAULT_NAMESPACE
+      volumes: []
+      networks:
+        - smarter-net
+
+  monitoring:
+    logs:
+      enabled: true
+      destination: supabase
+      table: vault_mcp_logs
+    metrics:
+      - name: mcp_requests_total
+        type: counter
+      - name: mcp_request_duration
+        type: histogram
+      - name: vault_operations_total
+        type: counter
+      - name: vault_errors_total
+        type: counter
+
+  security:
+    notes:
+      - "Intended for local/internal use only"
+      - "Always configure MCP_ALLOWED_ORIGINS to restrict access"
+      - "MCP server may expose Vault secrets to LLM - use with trusted clients only"
+      - "Review all AI-generated operations before execution"
+      - "Vault token should have minimal required permissions"

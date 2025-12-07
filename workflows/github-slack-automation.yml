@@ -1,0 +1,376 @@
+# 🤖 GitHub → N8N → Slack Automation
+# Automatización de eventos GitHub con notificaciones Slack via N8N
+
+version: "1.0"
+name: "github-slack-automation"
+category: "automation"
+updated: "2025-11-17"
+
+metadata:
+  n8n_workflow_url: "https://n8n.smarterbot.cl/workflow/github-slack-sync"
+  description: "Sincroniza eventos de GitHub (issues, PRs, commits) con Slack via N8N"
+  tags: ["github", "slack", "n8n", "automation", "notifications"]
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Triggers: Eventos de GitHub
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+triggers:
+  github_webhooks:
+    - event: "issues"
+      actions: ["opened", "closed", "labeled"]
+      repo: "SmarterCL/*"
+      
+    - event: "pull_request"
+      actions: ["opened", "closed", "merged", "review_requested"]
+      repo: "SmarterCL/*"
+      
+    - event: "push"
+      branches: ["main", "production"]
+      repo: "SmarterCL/*"
+      
+    - event: "deployment_status"
+      statuses: ["success", "failure"]
+      repo: "SmarterCL/*"
+      
+    - event: "workflow_run"
+      conclusions: ["success", "failure"]
+      repo: "SmarterCL/SmarterOS"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# N8N Workflow Structure
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+n8n_nodes:
+  1_webhook:
+    type: "n8n-nodes-base.webhook"
+    name: "GitHub Webhook"
+    parameters:
+      path: "github-events"
+      method: "POST"
+      authentication: "headerAuth"
+      headerAuth:
+        name: "X-Hub-Signature-256"
+        value: "={{ $env.GITHUB_WEBHOOK_SECRET }}"
+    
+  2_switch:
+    type: "n8n-nodes-base.switch"
+    name: "Event Router"
+    parameters:
+      rules:
+        - conditions:
+            - field: "{{ $json.action }}"
+              operation: "equals"
+              value: "opened"
+          output: "issue_opened"
+        - conditions:
+            - field: "{{ $json.pull_request }}"
+              operation: "exists"
+          output: "pull_request"
+        - conditions:
+            - field: "{{ $json.ref }}"
+              operation: "contains"
+              value: "refs/heads/main"
+          output: "push_main"
+        - conditions:
+            - field: "{{ $json.workflow_run }}"
+              operation: "exists"
+          output: "workflow_run"
+  
+  3_format_issue:
+    type: "n8n-nodes-base.code"
+    name: "Format Issue Message"
+    parameters:
+      mode: "code"
+      language: "javascript"
+      code: |
+        const issue = $input.item.json.issue;
+        const action = $input.item.json.action;
+        const repo = $input.item.json.repository.full_name;
+        
+        let emoji = action === 'opened' ? '🆕' : action === 'closed' ? '✅' : '🏷️';
+        let color = action === 'opened' ? '#36a64f' : action === 'closed' ? '#2eb886' : '#439FE0';
+        
+        return {
+          json: {
+            channel: '#dev',
+            text: `${emoji} Issue ${action}: ${issue.title}`,
+            blocks: [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*${emoji} Issue ${action.toUpperCase()}*\n\n*${issue.title}*\n${issue.body || 'Sin descripción'}`
+                }
+              },
+              {
+                type: 'context',
+                elements: [
+                  {
+                    type: 'mrkdwn',
+                    text: `📦 ${repo} | 👤 ${issue.user.login} | <${issue.html_url}|Ver issue #${issue.number}>`
+                  }
+                ]
+              }
+            ],
+            attachments: [
+              {
+                color: color,
+                fields: [
+                  {
+                    title: 'Estado',
+                    value: issue.state,
+                    short: true
+                  },
+                  {
+                    title: 'Asignado',
+                    value: issue.assignee ? issue.assignee.login : 'Sin asignar',
+                    short: true
+                  }
+                ]
+              }
+            ]
+          }
+        };
+  
+  4_format_pr:
+    type: "n8n-nodes-base.code"
+    name: "Format PR Message"
+    parameters:
+      mode: "code"
+      language: "javascript"
+      code: |
+        const pr = $input.item.json.pull_request;
+        const action = $input.item.json.action;
+        const repo = $input.item.json.repository.full_name;
+        
+        let emoji = action === 'opened' ? '🔀' : action === 'closed' && pr.merged ? '🎉' : '❌';
+        let status = action === 'opened' ? 'abierto' : pr.merged ? 'mergeado' : 'cerrado';
+        let color = pr.merged ? '#6f42c1' : action === 'opened' ? '#0366d6' : '#d73a49';
+        
+        return {
+          json: {
+            channel: '#dev',
+            text: `${emoji} PR ${status}: ${pr.title}`,
+            blocks: [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*${emoji} Pull Request ${status.toUpperCase()}*\n\n*${pr.title}*\n${pr.body || 'Sin descripción'}`
+                }
+              },
+              {
+                type: 'context',
+                elements: [
+                  {
+                    type: 'mrkdwn',
+                    text: `📦 ${repo} | 👤 ${pr.user.login} | \`${pr.base.ref}\` ← \`${pr.head.ref}\` | <${pr.html_url}|Ver PR #${pr.number}>`
+                  }
+                ]
+              }
+            ],
+            attachments: [
+              {
+                color: color,
+                fields: [
+                  {
+                    title: 'Cambios',
+                    value: `+${pr.additions} -${pr.deletions}`,
+                    short: true
+                  },
+                  {
+                    title: 'Commits',
+                    value: pr.commits,
+                    short: true
+                  }
+                ]
+              }
+            ]
+          }
+        };
+  
+  5_format_push:
+    type: "n8n-nodes-base.code"
+    name: "Format Push Message"
+    parameters:
+      mode: "code"
+      language: "javascript"
+      code: |
+        const push = $input.item.json;
+        const repo = push.repository.full_name;
+        const commits = push.commits || [];
+        const branch = push.ref.replace('refs/heads/', '');
+        
+        const commitsList = commits.slice(0, 5).map(c => 
+          `• \`${c.id.substring(0, 7)}\` ${c.message.split('\n')[0]} - ${c.author.name}`
+        ).join('\n');
+        
+        return {
+          json: {
+            channel: '#dev',
+            text: `🚀 Push a ${branch}: ${commits.length} commits`,
+            blocks: [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*🚀 Push a \`${branch}\`*\n\n${commitsList}${commits.length > 5 ? `\n\n_...y ${commits.length - 5} commits más_` : ''}`
+                }
+              },
+              {
+                type: 'context',
+                elements: [
+                  {
+                    type: 'mrkdwn',
+                    text: `📦 ${repo} | 👤 ${push.pusher.name} | <${push.compare}|Ver cambios>`
+                  }
+                ]
+              }
+            ]
+          }
+        };
+  
+  6_format_workflow:
+    type: "n8n-nodes-base.code"
+    name: "Format Workflow Message"
+    parameters:
+      mode: "code"
+      language: "javascript"
+      code: |
+        const workflow = $input.item.json.workflow_run;
+        const repo = $input.item.json.repository.full_name;
+        const conclusion = workflow.conclusion;
+        
+        let emoji = conclusion === 'success' ? '✅' : '❌';
+        let color = conclusion === 'success' ? 'good' : 'danger';
+        let status = conclusion === 'success' ? 'exitoso' : 'fallido';
+        
+        return {
+          json: {
+            channel: '#ops',
+            text: `${emoji} Workflow ${status}: ${workflow.name}`,
+            blocks: [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*${emoji} Workflow ${status.toUpperCase()}*\n\n*${workflow.name}*`
+                }
+              },
+              {
+                type: 'context',
+                elements: [
+                  {
+                    type: 'mrkdwn',
+                    text: `📦 ${repo} | 🌿 ${workflow.head_branch} | 👤 ${workflow.actor.login} | <${workflow.html_url}|Ver logs>`
+                  }
+                ]
+              }
+            ],
+            attachments: [
+              {
+                color: color,
+                fields: [
+                  {
+                    title: 'Conclusión',
+                    value: conclusion,
+                    short: true
+                  },
+                  {
+                    title: 'Duración',
+                    value: `${Math.round((new Date(workflow.updated_at) - new Date(workflow.created_at)) / 1000)}s`,
+                    short: true
+                  }
+                ]
+              }
+            ]
+          }
+        };
+  
+  7_slack:
+    type: "n8n-nodes-base.slack"
+    name: "Send to Slack"
+    parameters:
+      authentication: "oAuth2"
+      resource: "message"
+      operation: "post"
+      channel: "={{ $json.channel }}"
+      text: "={{ $json.text }}"
+      attachments: "={{ JSON.stringify($json.attachments || []) }}"
+      blocksUi:
+        blocksValues: "={{ $json.blocks }}"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Configuration
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+configuration:
+  github:
+    webhook_url: "https://n8n.smarterbot.cl/webhook/github-events"
+    secret: "{{ vault:smarteros/mcp/github:webhook_secret }}"
+    repos:
+      - "SmarterCL/SmarterOS"
+      - "SmarterCL/fulldaygo.smarterbot.cl"
+      - "SmarterCL/smarteros-specs"
+  
+  slack:
+    oauth_token: "{{ vault:smarteros/mcp/slack:bot_token }}"
+    channels:
+      dev: "#dev"
+      ops: "#ops"
+      alerts: "#alerts"
+  
+  n8n:
+    url: "https://n8n.smarterbot.cl"
+    credentials:
+      github: "GitHub OAuth2"
+      slack: "Slack OAuth2"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Deployment Steps
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+deployment:
+  1_configure_github_webhook:
+    description: "Configurar webhook en cada repositorio"
+    steps:
+      - "Ir a repo Settings > Webhooks > Add webhook"
+      - "URL: https://n8n.smarterbot.cl/webhook/github-events"
+      - "Content type: application/json"
+      - "Secret: obtener de Vault"
+      - "Events: Issues, Pull requests, Pushes, Workflow runs"
+  
+  2_import_n8n_workflow:
+    description: "Importar workflow en N8N"
+    steps:
+      - "Ir a https://n8n.smarterbot.cl"
+      - "Create > Import from File"
+      - "Seleccionar github-slack-automation.json"
+      - "Configurar credenciales GitHub y Slack"
+      - "Activar workflow"
+  
+  3_test_integration:
+    description: "Probar integración"
+    steps:
+      - "Crear issue de prueba en GitHub"
+      - "Verificar notificación en Slack #dev"
+      - "Revisar logs en N8N executions"
+
+notes: |
+  Automatización completa de eventos GitHub → Slack via N8N.
+  
+  Eventos soportados:
+  - Issues (opened, closed, labeled)
+  - Pull Requests (opened, closed, merged)
+  - Pushes a main/production
+  - Workflow runs (success, failure)
+  
+  Canales Slack:
+  - #dev: Issues, PRs, Pushes
+  - #ops: Workflow runs, deployments
+  - #alerts: Errores críticos
+  
+  Configurar webhooks en:
+  - https://github.com/SmarterCL/SmarterOS/settings/hooks
+  - https://github.com/SmarterCL/fulldaygo.smarterbot.cl/settings/hooks

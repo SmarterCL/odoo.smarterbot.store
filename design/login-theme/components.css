@@ -1,0 +1,231 @@
+.so-login-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--so-card-bg);
+  border-radius: 16px;
+  padding: 40px;
+  box-shadow: 0 25px 60px rgba(15, 23, 42, 0.15);
+  position: relative;
+  overflow: hidden;
+}
+
+.so-login-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.35), rgba(79, 70, 229, 0.2));
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.so-login-card-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.so-login-header {
+  text-align: center;
+}
+
+.so-login-logo {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 8px;
+}
+
+.so-login-title {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--so-text);
+}
+
+.so-login-subtitle {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--so-text-muted);
+}
+
+.so-tenant-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--so-primary);
+  background: rgba(37, 99, 235, 0.14);
+  border-radius: 999px;
+  padding: 6px 12px;
+  margin: 0 auto;
+}
+
+.so-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.so-divider {
+  display: flex;
+  align-items: center;
+  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--so-text-muted);
+  gap: 12px;
+}
+
+.so-divider::before,
+.so-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--so-border);
+}
+
+.so-login-footer {
+  font-size: 12px;
+  color: var(--so-text-muted);
+  text-align: center;
+}
+
+.so-login-support {
+  color: var(--so-primary);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.so-login-status {
+  padding: 10px 12px;
+  font-size: 13px;
+  border-radius: 10px;
+}
+
+.so-login-status.success {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--so-success);
+}
+
+.so-login-status.error {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--so-error);
+}
+
+.so-login-metadata {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--so-text-muted);
+}
+.so-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.so-input-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--so-text);
+}
+
+.so-input-control {
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--so-border);
+  padding: 0 14px;
+  font-size: 15px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.so-input-control:focus {
+  outline: none;
+  border-color: var(--so-primary);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+}
+
+.so-input-error {
+  font-size: 12px;
+  color: var(--so-error);
+}
+
+.so-input-helper {
+  font-size: 12px;
+  color: var(--so-text-muted);
+}
+
+.so-input-control.error {
+  border-color: var(--so-error);
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+.so-button {
+  height: 44px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.so-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.so-button-primary {
+  background: linear-gradient(135deg, #2563eb, #1e40af);
+  color: white;
+  box-shadow: 0 10px 30px rgba(37, 99, 235, 0.35);
+}
+
+.so-button-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 15px 36px rgba(37, 99, 235, 0.45);
+}
+
+.so-button-outline {
+  background: white;
+  border: 1px solid var(--so-border);
+  color: var(--so-text);
+}
+
+.so-button-ghost {
+  background: transparent;
+  color: var(--so-text);
+}
+
+.so-button-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--so-border);
+  background: white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.so-button-google {
+  background: white;
+  border: 1px solid #d1d5db;
+  color: var(--so-text);
+}
+
+.so-button-google img {
+  width: 18px;
+  height: 18px;
+}

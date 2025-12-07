@@ -1,0 +1,359 @@
+# 🤖 SmarterAgent N8N + MCP Native Integration
+# Arquitectura dual: N8N como cliente MCP + N8N como servidor MCP
+
+version: "2.0"
+name: "smarter-agent-n8n-mcp-native"
+category: "automation-ai"
+updated: "2025-11-17"
+
+metadata:
+  description: "Agente AI con integración nativa MCP bidireccional"
+  architecture: "dual-mcp"
+  n8n_workflow_id: "mcp-native-agent"
+  tags: ["OS", "MCP-Native", "Agent", "AI", "Bidirectional"]
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 🏗️ ARQUITECTURA DUAL
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+architecture:
+  pattern: "bidirectional-mcp"
+  
+  direction_1_n8n_as_client:
+    description: "N8N workflow conecta a SmarterMCP como cliente"
+    flow: "N8N → MCP Client Node → SmarterMCP Server → Tools (vault, docker, supabase, etc.)"
+    use_case: "Agente ejecuta herramientas del OS desde workflows"
+    
+  direction_2_n8n_as_server:
+    description: "SmarterMCP conecta a N8N como servidor MCP"
+    flow: "SmarterMCP → N8N MCP Server → Workflows (crear, editar, ejecutar)"
+    use_case: "Agente controla N8N como infraestructura programable"
+  
+  result: "Ciclo completo: SmarterMCP ←→ N8N ←→ SmarterAgent"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 🔌 DIRECCIÓN 1: N8N como Cliente MCP
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+n8n_as_mcp_client:
+  workflow_file: "smarter-agent-mcp-native.json"
+  
+  nodes:
+    1_webhook_trigger:
+      type: "webhook"
+      path: "/smarter-agent-mcp"
+      method: "POST"
+      
+    2_parse_input:
+      type: "set"
+      extracts: ["command", "args", "tenant_id", "context"]
+      
+    3_command_router:
+      type: "switch"
+      routes:
+        - condition: "command == 'execute_tool'"
+          output: "mcp-direct"
+        - condition: "context == 'analysis'"
+          output: "gemini-strategy"
+        - condition: "context == 'general'"
+          output: "hybrid-ai-mcp"
+          
+    4_mcp_client_node:
+      type: "httpRequest"
+      description: "Cliente MCP dentro de N8N"
+      target: "{{ env.SMARTER_MCP_SERVER }}/execute"
+      method: "POST"
+      body:
+        tool: "{{ args.tool }}"
+        params: "{{ args.params }}"
+        tenant_id: "{{ tenant_id }}"
+      available_tools:
+        - vault_read
+        - vault_write
+        - docker_run
+        - docker_stop
+        - supabase_query
+        - supabase_upsert
+        - github_create_issue
+        - github_create_pr
+        - shopify_sync_orders
+        - clerk_validate_session
+        - cloudflare_update_dns
+        - hostinger_create_backup
+        
+    5_gemini_with_mcp:
+      type: "lmChatGoogleGemini"
+      model: "gemini-1.5-pro"
+      system_prompt: |
+        Eres SmarterAgent Director con acceso a herramientas MCP.
+        Herramientas disponibles: vault, docker, supabase, github, shopify, clerk, cloudflare, hostinger.
+        Analiza y determina qué herramientas ejecutar.
+        Responde en español (Chile).
+        
+    6_openai_with_mcp:
+      type: "lmChatOpenAi"
+      model: "gpt-4-turbo-preview"
+      system_prompt: |
+        Eres SmarterAgent Code Executor con acceso a herramientas MCP.
+        Genera código preciso y ejecuta comandos via MCP.
+        Responde en español (Chile).
+        
+    7_process_response:
+      type: "code"
+      language: "javascript"
+      description: "Procesa respuestas de MCP + AI"
+      
+    8_save_via_mcp:
+      type: "httpRequest"
+      description: "Guarda logs usando MCP vault_write"
+      target: "{{ env.SMARTER_MCP_SERVER }}/tools/vault_write"
+      
+    9_respond:
+      type: "respondToWebhook"
+      headers:
+        X-Agent: "SmarterAgent-MCP-Native/2.0"
+        X-MCP-Server: "{{ env.SMARTER_MCP_SERVER }}"
+        X-Execution-Path: "{{ execution_path }}"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 🔌 DIRECCIÓN 2: N8N como Servidor MCP
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+n8n_as_mcp_server:
+  implementation: "n8n-mcp-server"
+  repository: "https://github.com/leonardsellem/n8n-mcp-server"
+  docker_compose: "dkcompose/n8n-mcp-server.yml"
+  
+  configuration:
+    host: "0.0.0.0"
+    port: 3100
+    n8n_host: "n8n.smarterbot.cl"
+    n8n_protocol: "https"
+    n8n_api_key: "{{ vault:smarteros/mcp/n8n:api_key }}"
+    
+  exposed_tools:
+    list_workflows:
+      description: "Lista todos los workflows disponibles"
+      params: ["active_only", "tags"]
+      
+    get_workflow:
+      description: "Obtiene detalles de un workflow"
+      params: ["workflow_id"]
+      
+    create_workflow:
+      description: "Crea un nuevo workflow"
+      params: ["name", "nodes", "connections", "tags"]
+      
+    update_workflow:
+      description: "Actualiza workflow existente"
+      params: ["workflow_id", "nodes", "connections"]
+      
+    execute_workflow:
+      description: "Ejecuta un workflow"
+      params: ["workflow_id", "input_data"]
+      
+    get_executions:
+      description: "Lista ejecuciones de workflow"
+      params: ["workflow_id", "limit", "status"]
+      
+    list_credentials:
+      description: "Lista credenciales disponibles (sin secrets)"
+      params: ["type"]
+      
+    activate_workflow:
+      description: "Activa/desactiva workflow"
+      params: ["workflow_id", "active"]
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 🔄 FLUJOS DE INTEGRACIÓN
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+integration_flows:
+  
+  flow_1_agent_uses_os_tools:
+    name: "Agente ejecuta herramientas del OS"
+    path: "N8N Workflow → MCP Client → SmarterMCP Server → Tool"
+    example:
+      request:
+        command: "execute_tool"
+        args:
+          tool: "vault_read"
+          params:
+            path: "smarteros/mcp/clerk"
+        tenant_id: "fulldaygo"
+      response:
+        mcp_result:
+          tool: "vault_read"
+          status: "success"
+          output:
+            publishable_key: "pk_test_XXXX"
+            secret_key: "sk_test_YYYY"
+            
+  flow_2_agent_controls_n8n:
+    name: "Agente controla N8N como infraestructura"
+    path: "SmarterMCP → N8N MCP Server → N8N API → Workflow"
+    example:
+      request:
+        tool: "create_workflow"
+        params:
+          name: "Sync Shopify Orders"
+          nodes: [...]
+          tags: ["shopify", "automation"]
+      response:
+        workflow_id: "abc123"
+        status: "created"
+        url: "https://n8n.smarterbot.cl/workflow/abc123"
+        
+  flow_3_self_modification:
+    name: "Agente se auto-modifica"
+    path: "N8N → MCP → N8N MCP Server → Update Self"
+    example:
+      description: |
+        El workflow puede modificarse a sí mismo:
+        1. Detecta error en nodo
+        2. Usa MCP para llamar update_workflow
+        3. Se actualiza en tiempo real
+        4. Continúa ejecución
+        
+  flow_4_orchestration:
+    name: "Orquestación completa OS"
+    path: "SmarterMCP ↔ N8N ↔ All Services"
+    example:
+      scenario: "Deploy nuevo tenant"
+      steps:
+        - "SmarterMCP → N8N: create_workflow(tenant_setup)"
+        - "N8N → MCP: docker_run(tenant_services)"
+        - "N8N → MCP: supabase_create_schema(tenant_db)"
+        - "N8N → MCP: cloudflare_add_dns(tenant.smarterbot.cl)"
+        - "N8N → MCP: vault_write(tenant_credentials)"
+        - "N8N → N8N: activate_workflow(tenant_monitoring)"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 🚀 DEPLOYMENT
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+deployment:
+  
+  step_1_deploy_n8n_mcp_server:
+    description: "Levantar N8N como servidor MCP"
+    commands:
+      - "cd /Users/mac/dev/2025/dkcompose"
+      - "cp n8n-mcp-server.yml docker-compose.yml"
+      - "# Configurar .env con N8N_API_KEY"
+      - "docker-compose up -d n8n-mcp-server"
+      - "docker logs -f n8n-mcp-server"
+    verify:
+      - "curl http://localhost:3100/health"
+      - "curl http://localhost:3100/tools"
+      
+  step_2_import_workflow:
+    description: "Importar workflow con MCP Client"
+    commands:
+      - "Ir a https://n8n.smarterbot.cl"
+      - "Import from File → smarter-agent-mcp-native.json"
+      - "Configurar credenciales:"
+      - "  - SmarterMCP Auth Token"
+      - "  - OpenAI API"
+      - "  - Google Gemini API"
+      - "Configurar variables de entorno:"
+      - "  - SMARTER_MCP_SERVER=http://smarter-mcp:3000"
+      - "Activar workflow"
+      
+  step_3_register_n8n_in_mcp:
+    description: "Registrar N8N como proveedor MCP"
+    file_update: "agents/mcp-registry.yml"
+    add_entry:
+      provider: "n8n"
+      tier: 5
+      protocol: "mcp"
+      server_url: "http://n8n-mcp-server:3100"
+      vault_path: "smarteros/mcp/n8n"
+      capabilities:
+        - "workflow_management"
+        - "execution_control"
+        - "credential_listing"
+      tools_count: 8
+      
+  step_4_test_bidirectional:
+    description: "Probar integración bidireccional"
+    test_1_n8n_to_mcp:
+      curl: |
+        curl -X POST https://n8n.smarterbot.cl/webhook/smarter-agent-mcp \
+          -H "Content-Type: application/json" \
+          -d '{
+            "command": "execute_tool",
+            "args": {
+              "tool": "vault_read",
+              "params": {"path": "smarteros/mcp/clerk"}
+            },
+            "tenant_id": "fulldaygo"
+          }'
+      expect: "MCP tool execution result"
+      
+    test_2_mcp_to_n8n:
+      description: "Desde SmarterMCP CLI"
+      command: |
+        smartermcp execute --tool n8n.list_workflows --params '{"active_only": true}'
+      expect: "Lista de workflows activos"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 📊 MONITORING & OBSERVABILITY
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+monitoring:
+  logs:
+    n8n_workflows: "N8N UI → Executions"
+    mcp_server: "docker logs n8n-mcp-server"
+    vault_logs: "smarteros/agents/logs/{tenant_id}/{date}"
+    
+  metrics:
+    workflow_executions: "Count executions por tenant"
+    mcp_tool_calls: "Count calls por herramienta"
+    ai_model_usage: "Tokens consumed (OpenAI + Gemini)"
+    response_time: "Average execution time"
+    
+  alerts:
+    workflow_failure: "Slack #ops"
+    mcp_server_down: "Slack #alerts"
+    high_token_usage: "Slack #ops"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 🔐 SECURITY
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+security:
+  authentication:
+    n8n_to_mcp: "HTTP Header Auth (X-MCP-Token)"
+    mcp_to_n8n: "N8N API Key"
+    
+  authorization:
+    tenant_isolation: "tenant_id en cada request"
+    vault_policies: "Per-tenant access control"
+    
+  secrets:
+    storage: "HashiCorp Vault"
+    rotation: "30 días"
+    access: "Vault policies por agente"
+
+notes: |
+  🎯 ARQUITECTURA DUAL MCP:
+  
+  Esta implementación permite:
+  
+  ✅ N8N ejecuta herramientas SmarterMCP (cliente)
+  ✅ SmarterMCP controla workflows N8N (servidor)
+  ✅ Auto-modificación de workflows
+  ✅ Orquestación completa del OS
+  ✅ Aislamiento multi-tenant
+  ✅ Logs centralizados en Vault
+  ✅ Integración OpenAI + Gemini
+  
+  El ciclo completo permite:
+  SmarterMCP ←→ N8N ←→ SmarterAgent
+  
+  Próximos pasos:
+  - [ ] Deploy docker-compose
+  - [ ] Import workflow a N8N
+  - [ ] Registrar N8N en MCP registry
+  - [ ] Probar flujos bidireccionales
+  - [ ] Configurar monitoring

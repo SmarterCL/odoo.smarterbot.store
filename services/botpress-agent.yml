@@ -1,0 +1,869 @@
+# Botpress Agent Service Specification
+# Multi-tenant AI Agent platform with RAG capabilities
+
+version: "1.0.0"
+last_updated: "2025-11-17T00:00:00Z"
+status: "planned"
+
+# ============================================
+# SERVICE METADATA
+# ============================================
+
+service:
+  id: "botpress-agent"
+  name: "Botpress AI Agent"
+  type: "backend"
+  category: "ai-agents"
+  description: "Multi-tenant AI Agent platform con RAG (Retrieval-Augmented Generation), conversaciones multi-turn, handoffs inteligentes y knowledge base por cliente. Complementa n8n (orquestación) y MCP (gobernanza) agregando capa cognitiva de agentes especializados."
+  
+  urls:
+    production: "https://botpress.smarterbot.cl"
+    admin: "https://botpress.smarterbot.cl/admin"
+    api: "https://botpress.smarterbot.cl/api/v1"
+    webhooks: "https://botpress.smarterbot.cl/webhooks"
+    studio: "https://botpress.smarterbot.cl/studio"
+  
+  repository:
+    upstream: "https://github.com/botpress/botpress"
+    adk: "https://github.com/botpress/adk"
+    gh_actions: "https://github.com/botpress/gh-actions"
+    version: "v12.26.0"
+    license: "AGPL-3.0 + Commercial"
+
+# ============================================
+# ARQUITECTURA DE 3 CAPAS COGNITIVAS
+# ============================================
+
+cognitive_layers:
+  
+  layer_1_execution:
+    service: "n8n"
+    role: "Workflow orchestration"
+    capabilities:
+      - "Webhooks entrantes (Chatwoot, Shopify, etc.)"
+      - "OCR simple (Google Vision, Document AI)"
+      - "Clasificación básica (LLM single-turn)"
+      - "Integraciones API (Odoo, Supabase, Chatwoot)"
+      - "Scheduled jobs (cron, polling)"
+    latency: "< 2s"
+    complexity: "low-medium"
+    use_cases:
+      - "Procesar factura → extraer RUT + monto → guardar en Odoo"
+      - "Mensaje WhatsApp → clasificar intent → responder template"
+      - "Sync contacts Supabase → Chatwoot"
+  
+  layer_2_governance:
+    service: "MCP (Model Context Protocol)"
+    role: "Security, secrets, audit, rate limiting"
+    capabilities:
+      - "Vault integration (secrets management)"
+      - "HMAC validation (webhook security)"
+      - "Rate limiting (per tenant, per endpoint)"
+      - "Audit logs (Redpanda/Kafka)"
+      - "Identity enforcement (RAG_IDENTITY)"
+      - "Multi-cloud credentials (Azure, GCP, AWS)"
+    latency: "< 500ms"
+    complexity: "high"
+    use_cases:
+      - "Obtener API token de Vault: secret/tenant/<id>/chatwoot"
+      - "Validar webhook HMAC de Chatwoot"
+      - "Auditar operación: 'user X accedió a factura Y'"
+      - "Rate limit: 100 req/min por tenant"
+  
+  layer_3_cognitive:
+    service: "Botpress Agent"
+    role: "Multi-turn conversations, RAG, specialized agents"
+    capabilities:
+      - "Conversaciones multi-turn (contexto persistente)"
+      - "RAG knowledge base (documentos por cliente)"
+      - "Agentes especializados (billing, support, sales)"
+      - "Handoffs automáticos (triage → specialist)"
+      - "Structured output (JSON schema validated)"
+      - "Tool calling (APIs externas, databases)"
+      - "LLM agnostic (OpenAI, Anthropic, Gemini)"
+    latency: "2-5s"
+    complexity: "high"
+    use_cases:
+      - "Cliente: '¿Cuál es el estado de mi pedido #12345?' → RAG busca en knowledge base → responde con tracking"
+      - "Cliente: 'Necesito ayuda con mi factura' → Triage agent → handoff a Billing agent → busca factura en Odoo → explica detalle"
+      - "Cliente envía PDF contrato → Botpress extrae cláusulas clave → almacena en knowledge base → responde resumen"
+
+# ============================================
+# MULTI-TENANT ARCHITECTURE
+# ============================================
+
+multi_tenancy:
+  model: "shared_instance"
+  isolation_level: "workspace"
+  
+  workspace_structure:
+    - tenant_id: "abc123" # Clerk user_id
+      workspace_id: "ws_abc123_prod"
+      bots:
+        - bot_id: "bot_triage_abc123"
+          name: "Triage Agent"
+          role: "Route conversations to specialists"
+        - bot_id: "bot_billing_abc123"
+          name: "Billing Agent"
+          role: "Handle invoices, payments, refunds"
+        - bot_id: "bot_support_abc123"
+          name: "Support Agent"
+          role: "Technical support, FAQs, troubleshooting"
+      knowledge_base:
+        enabled: true
+        documents: "gs://smarteros-kb/<tenant_id>/"
+        embeddings: "text-embedding-004"
+        vector_store: "postgres-pgvector"
+      integrations:
+        chatwoot:
+          inbox_id: 123
+          webhook_url: "https://botpress.smarterbot.cl/webhooks/chatwoot/<tenant_id>"
+        n8n:
+          workflow_url: "https://n8n.smarterbot.cl/webhook/botpress-<tenant_id>"
+        mcp:
+          vault_path: "secret/tenant/<tenant_id>/botpress"
+  
+  resource_limits:
+    free_tier:
+      conversations_per_month: 1000
+      knowledge_base_mb: 100
+      bots: 3
+      vector_embeddings: 10000
+    pro_tier:
+      conversations_per_month: 10000
+      knowledge_base_mb: 1000
+      bots: 10
+      vector_embeddings: 100000
+    enterprise_tier:
+      conversations_per_month: "unlimited"
+      knowledge_base_mb: 10000
+      bots: "unlimited"
+      vector_embeddings: 1000000
+      dedicated_instance: true
+
+# ============================================
+# DEPLOYMENT ARCHITECTURE
+# ============================================
+
+deployment:
+  mode: "shared" # shared | dedicated
+  platform: "Docker"
+  orchestrator: "Dokploy / Portainer"
+  hosting: "Hostinger VPS"
+  reverse_proxy: "Traefik"
+  
+  containers:
+    botpress:
+      image: "botpress/server:v12.26.0"
+      container_name: "botpress"
+      ports:
+        - "3000:3000"
+      volumes:
+        - "botpress_data:/botpress/data"
+        - "botpress_models:/botpress/models"
+        - "botpress_storage:/botpress/storage"
+      environment:
+        BP_HOST: "0.0.0.0"
+        BP_PORT: "3000"
+        EXTERNAL_URL: "https://botpress.smarterbot.cl"
+        DATABASE_URL: "postgres://botpress:${POSTGRES_PASSWORD}@postgres:5432/botpress_prod"
+        BP_MODULE_NLU_DUCKLINGURL: "http://duckling:8000"
+        BP_MODULE_NLU_LANGUAGESOURCES: '[{"endpoint":"https://api.openai.com/v1"}]'
+        POSTGRES_PASSWORD: "vault:secret/botpress/postgres#password"
+        BP_PRODUCTION: "true"
+        CLUSTER_ENABLED: "false" # true for HA setup
+        REDIS_URL: "redis://redis:6379"
+        BPFS_STORAGE: "database" # database | s3 | gcs
+        BP_STUDIO_USERNAME: "admin"
+        BP_STUDIO_PASSWORD: "vault:secret/botpress/admin#password"
+      depends_on:
+        - postgres
+        - redis
+        - duckling
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.botpress.rule=Host(`botpress.smarterbot.cl`)"
+        - "traefik.http.routers.botpress.entrypoints=websecure"
+        - "traefik.http.routers.botpress.tls.certresolver=letsencrypt"
+        - "traefik.http.services.botpress.loadbalancer.server.port=3000"
+    
+    duckling:
+      image: "rasa/duckling:latest"
+      container_name: "botpress_duckling"
+      ports:
+        - "8000:8000"
+      command: "duckling-example-exe --no-access-log --port 8000"
+      restart: unless-stopped
+  
+  database:
+    type: "PostgreSQL"
+    version: "16"
+    container_name: "postgres"
+    database_name: "botpress_prod"
+    port: "5432"
+    extensions:
+      - "pgvector" # For RAG embeddings
+      - "pg_trgm" # For fuzzy search
+    volumes:
+      - "postgres_data:/var/lib/postgresql/data"
+    backup:
+      enabled: true
+      frequency: "daily"
+      retention: "30d"
+      destination: "s3://smarteros-backups/botpress/"
+  
+  cache:
+    type: "Redis"
+    version: "7.2"
+    container_name: "redis"
+    port: "6379"
+    volumes:
+      - "redis_data:/data"
+    persistence: true
+    use_cases:
+      - "Session storage"
+      - "Conversation context cache"
+      - "Rate limiting"
+      - "Pub/Sub for multi-instance (future HA)"
+  
+  storage:
+    knowledge_base:
+      type: "Google Cloud Storage"
+      bucket: "smarteros-kb"
+      path: "/<tenant_id>/"
+      documents:
+        - "PDFs, DOCX, TXT"
+        - "HTML, Markdown"
+        - "CSV, JSON, YAML"
+      processing:
+        - "Text extraction (Tika)"
+        - "Chunking (512 tokens max)"
+        - "Embedding (text-embedding-004)"
+        - "Vector store (Postgres pgvector)"
+    
+    models:
+      type: "local" # local | gcs | s3
+      path: "/botpress/models"
+      models:
+        - "nlu-models (LUIS, Rasa)"
+        - "custom-actions"
+        - "embedding-cache"
+  
+  networking:
+    traefik_labels:
+      - "traefik.http.routers.botpress.middlewares=secure-headers@file,botpress-ratelimit"
+      - "traefik.http.middlewares.botpress-ratelimit.ratelimit.average=100"
+      - "traefik.http.middlewares.botpress-ratelimit.ratelimit.burst=50"
+
+# ============================================
+# INTEGRATION ARCHITECTURE
+# ============================================
+
+integrations:
+  
+  chatwoot:
+    direction: "bidirectional"
+    
+    chatwoot_to_botpress:
+      webhook_url: "https://botpress.smarterbot.cl/webhooks/chatwoot/<tenant_id>"
+      security: "HMAC-SHA256"
+      events:
+        - "message_created"
+        - "conversation_created"
+        - "conversation_updated"
+      flow:
+        - "Chatwoot dispara evento message_created"
+        - "Botpress recibe webhook, valida HMAC"
+        - "Botpress identifica workspace por tenant_id"
+        - "Botpress Agent procesa mensaje (RAG, multi-turn)"
+        - "Botpress decide: responder, escalar, buscar knowledge base"
+      payload_example: |
+        {
+          "event": "message_created",
+          "id": 12345,
+          "content": "¿Cuál es el estado de mi pedido #12345?",
+          "inbox_id": 123,
+          "conversation_id": 678,
+          "sender": {
+            "id": 901,
+            "name": "Cliente Test",
+            "custom_attributes": {
+              "tenant_id": "abc123",
+              "rut": "12345678-9"
+            }
+          }
+        }
+    
+    botpress_to_chatwoot:
+      api_endpoint: "https://chatwoot.smarterbot.cl/api/v1"
+      authentication: "Bearer token (from Vault)"
+      vault_secret: "secret/tenant/<tenant_id>/chatwoot"
+      operations:
+        send_message:
+          endpoint: "POST /api/v1/accounts/{account_id}/conversations/{conversation_id}/messages"
+          payload_example: |
+            {
+              "content": "Tu pedido #12345 está en ruta. Tracking: ABC-123-XYZ",
+              "message_type": "outgoing",
+              "private": false,
+              "content_attributes": {
+                "source": "botpress-agent",
+                "agent_id": "bot_triage_abc123",
+                "confidence": 0.95
+              }
+            }
+        
+        update_custom_attributes:
+          endpoint: "POST /api/v1/accounts/{account_id}/conversations/{conversation_id}/update_custom_attributes"
+          payload_example: |
+            {
+              "custom_attributes": {
+                "botpress_agent": "bot_billing_abc123",
+                "knowledge_base_used": true,
+                "intent": "pedido_tracking",
+                "confidence": 0.95
+              }
+            }
+        
+        escalate_to_human:
+          endpoint: "POST /api/v1/accounts/{account_id}/conversations/{conversation_id}/assignments"
+          payload_example: |
+            {
+              "assignee_id": 5, // Human agent ID
+              "team_id": 2
+            }
+  
+  n8n:
+    direction: "bidirectional"
+    
+    botpress_to_n8n:
+      webhook_url: "https://n8n.smarterbot.cl/webhook/botpress-action"
+      use_cases:
+        - "Botpress necesita ejecutar action compleja (crear pedido en Odoo)"
+        - "Botpress necesita OCR de documento adjunto"
+        - "Botpress necesita sincronizar contacto con Supabase"
+      flow:
+        - "Botpress Agent detecta tool call: 'create_order'"
+        - "Botpress envia POST a n8n webhook"
+        - "n8n ejecuta workflow (Odoo API, Supabase, etc.)"
+        - "n8n retorna resultado a Botpress"
+        - "Botpress continúa conversación con resultado"
+      payload_example: |
+        {
+          "tool": "create_order",
+          "tenant_id": "abc123",
+          "params": {
+            "customer_rut": "12345678-9",
+            "items": [
+              {"sku": "PROD-001", "qty": 2}
+            ]
+          }
+        }
+    
+    n8n_to_botpress:
+      api_endpoint: "https://botpress.smarterbot.cl/api/v1"
+      authentication: "API Key (from Vault)"
+      vault_secret: "secret/tenant/<tenant_id>/botpress"
+      use_cases:
+        - "n8n necesita iniciar conversación proactiva"
+        - "n8n necesita actualizar knowledge base"
+        - "n8n necesita disparar training de bot"
+  
+  mcp:
+    direction: "bidirectional"
+    
+    botpress_to_mcp:
+      endpoint: "https://mcp.smarterbot.cl/v1"
+      authentication: "HMAC + RAG_IDENTITY"
+      use_cases:
+        - "Obtener secrets de Vault: secret/tenant/<id>/chatwoot"
+        - "Validar permisos: ¿user X puede acceder a factura Y?"
+        - "Auditar operación: 'Botpress Agent respondió pregunta sensible'"
+        - "Rate limiting: verificar límite de tenant"
+      flow:
+        - "Botpress necesita API token de Chatwoot"
+        - "Botpress llama MCP: GET /vault/secret/tenant/abc123/chatwoot"
+        - "MCP valida HMAC + RAG_IDENTITY"
+        - "MCP retorna secret desde Vault"
+        - "Botpress usa secret para llamar API Chatwoot"
+    
+    mcp_to_botpress:
+      use_cases:
+        - "MCP dispara bot training cuando hay nuevos documentos"
+        - "MCP actualiza permisos de workspace"
+
+# ============================================
+# AGENT ARCHITECTURE (Botpress ADK)
+# ============================================
+
+agents:
+  
+  triage_agent:
+    name: "Triage Agent"
+    role: "Route conversations to specialist agents"
+    instructions: |
+      You are a triage agent. Your job is to:
+      1. Understand the user's request
+      2. Classify the intent (billing, support, sales, general)
+      3. Route to the appropriate specialist agent
+      4. NEVER try to answer complex questions yourself
+      
+      Available specialists:
+      - Billing Agent: invoices, payments, refunds
+      - Support Agent: technical issues, FAQs, troubleshooting
+      - Sales Agent: product info, quotes, demos
+    model: "gpt-4o-mini" # Fast and cheap for routing
+    tools: []
+    handoffs:
+      - "billing_agent"
+      - "support_agent"
+      - "sales_agent"
+    priority: 1 # Default entry point
+  
+  billing_agent:
+    name: "Billing Agent"
+    role: "Handle invoices, payments, refunds"
+    instructions: |
+      You are a billing specialist. You help customers with:
+      - Invoice lookups (search by order ID, RUT, date)
+      - Payment status tracking
+      - Refund requests
+      - Payment method updates
+      
+      Use the knowledge base to find invoice details.
+      Use tools to create tickets in Odoo if needed.
+      If you can't resolve, escalate to human agent.
+    model: "gpt-4o" # More capable for complex reasoning
+    tools:
+      - "search_knowledge_base"
+      - "create_odoo_ticket"
+      - "send_email"
+    handoffs:
+      - "triage_agent" # Can route back
+      - "human_agent" # Escalation
+    priority: 2
+  
+  support_agent:
+    name: "Support Agent"
+    role: "Technical support, FAQs, troubleshooting"
+    instructions: |
+      You are a technical support specialist. You help customers with:
+      - Product troubleshooting
+      - Setup guides
+      - FAQs from knowledge base
+      - Shipping tracking
+      
+      Use the knowledge base extensively.
+      If you can't resolve after 3 turns, escalate to human.
+    model: "gpt-4o"
+    tools:
+      - "search_knowledge_base"
+      - "search_faq"
+      - "get_tracking_info"
+    handoffs:
+      - "triage_agent"
+      - "human_agent"
+    priority: 2
+  
+  sales_agent:
+    name: "Sales Agent"
+    role: "Product info, quotes, demos"
+    instructions: |
+      You are a sales specialist. You help customers with:
+      - Product recommendations
+      - Pricing inquiries
+      - Quote generation
+      - Demo scheduling
+      
+      Use knowledge base for product details.
+      Use tools to create leads in Odoo.
+    model: "gpt-4o"
+    tools:
+      - "search_knowledge_base"
+      - "create_lead"
+      - "generate_quote"
+    handoffs:
+      - "triage_agent"
+      - "human_agent"
+    priority: 2
+
+# ============================================
+# RAG KNOWLEDGE BASE
+# ============================================
+
+rag:
+  enabled: true
+  
+  document_processing:
+    ingestion:
+      formats: ["pdf", "docx", "txt", "html", "md", "csv", "json", "yaml"]
+      max_size_mb: 50
+      endpoint: "POST /api/v1/kb/<tenant_id>/documents"
+      authentication: "API Key"
+    
+    pipeline:
+      - step: "extract_text"
+        tool: "Apache Tika"
+        fallback: "pdfplumber (for PDFs)"
+      
+      - step: "chunk"
+        method: "recursive_character_split"
+        params:
+          chunk_size: 512
+          chunk_overlap: 50
+          separators: ["\n\n", "\n", ". ", " "]
+      
+      - step: "embed"
+        model: "text-embedding-004" # Google Vertex AI
+        dimensions: 768
+        cost_per_1k: "$0.00001"
+      
+      - step: "store"
+        database: "Postgres (pgvector)"
+        index_type: "ivfflat"
+        distance_metric: "cosine"
+  
+  retrieval:
+    search_method: "hybrid" # semantic + keyword
+    semantic_search:
+      top_k: 5
+      min_similarity: 0.7
+    keyword_search:
+      method: "pg_trgm"
+      top_k: 3
+    reranking:
+      enabled: true
+      model: "cross-encoder/ms-marco-MiniLM-L-12-v2"
+  
+  generation:
+    prompt_template: |
+      You are a helpful assistant for {business_name}.
+      
+      Use the following context to answer the question. If the context doesn't contain the answer, say "I don't have that information in my knowledge base."
+      
+      Context:
+      {context}
+      
+      Question: {question}
+      
+      Answer:
+    model: "gpt-4o"
+    temperature: 0.2
+    max_tokens: 500
+
+# ============================================
+# SECURITY & COMPLIANCE
+# ============================================
+
+security:
+  authentication:
+    studio: "Username + Password (from Vault)"
+    api: "API Key per tenant"
+    webhooks: "HMAC-SHA256"
+  
+  authorization:
+    rbac: true
+    roles:
+      - "admin" # Full access to all workspaces
+      - "workspace_owner" # Manage own workspace + bots
+      - "bot_developer" # Create/edit bots
+      - "viewer" # Read-only
+  
+  data_protection:
+    encryption_at_rest: true
+    encryption_in_transit: "TLS 1.3"
+    pii_redaction: "automatic" # Redact RUT, email, phone
+    gdpr_compliance: true
+    data_retention: "configurable per tenant"
+  
+  audit_logs:
+    destination: "Redpanda (smarteros.audit.botpress)"
+    events:
+      - "agent_response"
+      - "knowledge_base_access"
+      - "tool_execution"
+      - "handoff"
+      - "escalation_to_human"
+
+# ============================================
+# CI/CD (botpress/gh-actions)
+# ============================================
+
+cicd:
+  repository: "https://github.com/SmarterCL/botpress-agents"
+  
+  github_actions:
+    - name: "Deploy Bot"
+      trigger: "push to main"
+      workflow: "botpress/gh-actions/deploy-bot@v1"
+      steps:
+        - "Checkout code"
+        - "Build bot (Botpress CLI)"
+        - "Test bot (unit tests + integration)"
+        - "Deploy to production (Botpress API)"
+        - "Notify Slack"
+    
+    - name: "Update Knowledge Base"
+      trigger: "new file in /knowledge-base"
+      workflow: "custom"
+      steps:
+        - "Upload document to GCS: smarteros-kb/<tenant_id>/"
+        - "Trigger ingestion: POST /api/v1/kb/<tenant_id>/ingest"
+        - "Wait for processing"
+        - "Verify embeddings created"
+    
+    - name: "Train Bot"
+      trigger: "manual / scheduled (weekly)"
+      workflow: "botpress/gh-actions/train-bot@v1"
+      steps:
+        - "Fetch conversation logs"
+        - "Extract intents + entities"
+        - "Retrain NLU model"
+        - "Deploy updated model"
+  
+  versioning:
+    bots: "Git tags (v1.0.0, v1.1.0, etc.)"
+    knowledge_base: "Timestamped snapshots"
+    models: "Semantic versioning"
+
+# ============================================
+# MONITORING & OBSERVABILITY
+# ============================================
+
+monitoring:
+  health_checks:
+    endpoint: "https://botpress.smarterbot.cl/health"
+    interval: "5m"
+    expected_status: 200
+  
+  metrics:
+    conversations:
+      - "total_conversations"
+      - "conversations_by_agent"
+      - "average_turns_per_conversation"
+      - "handoff_rate"
+      - "escalation_rate"
+    
+    knowledge_base:
+      - "documents_indexed"
+      - "embeddings_count"
+      - "search_latency_p95"
+      - "retrieval_accuracy"
+    
+    performance:
+      - "response_latency_p50"
+      - "response_latency_p95"
+      - "tool_execution_time"
+      - "llm_token_usage"
+  
+  logging:
+    application_logs: "/botpress/logs/app.log"
+    conversation_logs: "/botpress/logs/conversations/"
+    nlu_logs: "/botpress/logs/nlu.log"
+    webhook_logs: "Chatwoot UI → Logs tab"
+  
+  alerts:
+    - condition: "escalation_rate > 20%"
+      severity: "medium"
+      notification: "slack"
+    
+    - condition: "response_latency_p95 > 5s"
+      severity: "high"
+      notification: "slack + pagerduty"
+    
+    - condition: "knowledge_base_ingestion_failed"
+      severity: "high"
+      notification: "slack"
+
+# ============================================
+# BUSINESS LOGIC & USE CASES
+# ============================================
+
+use_cases:
+  
+  use_case_1_pedido_tracking:
+    flow: "Cliente → Chatwoot → Botpress → RAG → Chatwoot"
+    steps:
+      - "Cliente envía mensaje: '¿Cuál es el estado de mi pedido #12345?'"
+      - "Chatwoot dispara webhook a Botpress"
+      - "Botpress Triage Agent recibe mensaje"
+      - "Triage Agent clasifica intent: 'pedido_tracking'"
+      - "Triage Agent hace handoff a Support Agent"
+      - "Support Agent busca en knowledge base: 'pedido #12345'"
+      - "Knowledge base retorna: 'Pedido en ruta, tracking ABC-123-XYZ'"
+      - "Support Agent responde a Chatwoot"
+      - "Cliente recibe respuesta instantánea"
+    latency: "2-3s"
+    success_rate: "95%"
+  
+  use_case_2_factura_pago:
+    flow: "Cliente → Chatwoot → Botpress → n8n → Odoo → Botpress → Chatwoot"
+    steps:
+      - "Cliente: 'Necesito ayuda con mi factura del mes pasado'"
+      - "Triage Agent → Billing Agent (handoff)"
+      - "Billing Agent pregunta: '¿Puedes darme tu RUT?'"
+      - "Cliente: '12345678-9'"
+      - "Billing Agent usa tool: create_odoo_ticket({rut: '12345678-9'})"
+      - "n8n ejecuta workflow: buscar facturas en Odoo"
+      - "n8n retorna facturas a Botpress"
+      - "Billing Agent resume facturas: 'Tienes 2 facturas pendientes: $150.000 y $80.000'"
+      - "Cliente: '¿Puedo pagar la primera?'"
+      - "Billing Agent genera link de pago"
+    latency: "5-8s"
+    success_rate: "90%"
+  
+  use_case_3_rag_documento:
+    flow: "Cliente adjunta PDF → Chatwoot → Botpress → RAG ingestion → Knowledge base"
+    steps:
+      - "Cliente adjunta PDF contrato en Chatwoot"
+      - "Chatwoot dispara webhook a Botpress"
+      - "Botpress descarga PDF desde Chatwoot"
+      - "Botpress ingiere documento: extract → chunk → embed → store"
+      - "Botpress responde: 'He procesado tu contrato. ¿Qué necesitas saber?'"
+      - "Cliente: '¿Cuál es la cláusula de terminación?'"
+      - "Botpress busca en knowledge base: 'cláusula terminación'"
+      - "Botpress retorna chunk relevante + resumen"
+    latency: "10-15s (ingestion) + 3s (search)"
+    success_rate: "85%"
+
+# ============================================
+# DEVELOPMENT & TESTING
+# ============================================
+
+development:
+  local_setup:
+    docker_compose: "services/botpress-sandbox/docker-compose.yml"
+    environment: ".env.local"
+    seed_data: "npm run seed"
+  
+  botpress_cli:
+    install: "npm install -g @botpress/cli"
+    commands:
+      - "bp init --name my-bot" # Create new bot
+      - "bp build" # Build bot
+      - "bp deploy" # Deploy to production
+      - "bp logs" # View logs
+  
+  testing:
+    unit_tests:
+      framework: "Jest"
+      coverage: "> 80%"
+      run: "npm test"
+    
+    integration_tests:
+      framework: "Supertest"
+      endpoints:
+        - "POST /webhooks/chatwoot/<tenant_id>"
+        - "POST /api/v1/kb/<tenant_id>/documents"
+        - "GET /api/v1/conversations/<conversation_id>"
+    
+    e2e_tests:
+      tool: "Playwright"
+      scenarios:
+        - "Send message → receive response"
+        - "Upload document → search knowledge base"
+        - "Handoff triage → billing agent"
+
+# ============================================
+# ROADMAP
+# ============================================
+
+roadmap:
+  q4_2024:
+    - status: "done"
+      item: "Research Botpress ADK + arquitectura multi-tenant"
+    - status: "done"
+      item: "Crear spec botpress-agent.yml"
+  
+  q1_2025:
+    - status: "planned"
+      item: "Deploy Botpress en Hostinger/Dokploy (sandbox)"
+    - status: "planned"
+      item: "Crear Triage Agent básico (OpenAI)"
+    - status: "planned"
+      item: "Integrar Chatwoot → Botpress (webhooks bidireccionales)"
+    - status: "planned"
+      item: "Migrar workflow OCR simple a Botpress Agent"
+  
+  q2_2025:
+    - status: "planned"
+      item: "Implementar RAG knowledge base (GCS + pgvector)"
+    - status: "planned"
+      item: "Crear Billing Agent + Support Agent"
+    - status: "planned"
+      item: "Integrar n8n → Botpress (tool calling)"
+    - status: "planned"
+      item: "CI/CD con botpress/gh-actions"
+  
+  q3_2025:
+    - status: "planned"
+      item: "Multi-turn conversations (context persistente)"
+    - status: "planned"
+      item: "Handoffs automáticos (triage → specialists)"
+    - status: "planned"
+      item: "Analytics dashboard (Metabase)"
+  
+  q4_2025:
+    - status: "planned"
+      item: "Botpress dedicado por tenant (Azure ACA)"
+    - status: "planned"
+      item: "Multi-language support (ES/EN/PT)"
+    - status: "planned"
+      item: "Voice integration (speech-to-text → Botpress)"
+
+# ============================================
+# REFERENCES
+# ============================================
+
+references:
+  documentation:
+    - "https://botpress.com/docs"
+    - "https://github.com/botpress/botpress"
+    - "https://github.com/botpress/adk"
+    - "https://botpress.com/docs/rag"
+  
+  internal_docs:
+    - "smarteros-specs/services/chatwoot.yml"
+    - "smarteros-specs/services/n8n.yml"
+    - "docs/CHATWOOT-N8N-WEBHOOK-FLOW.md"
+    - "docs/MULTI-CLOUD-ARCHITECTURE.md"
+  
+  related_services:
+    - "Chatwoot (inbox multi-canal)"
+    - "n8n (workflow orchestration)"
+    - "MCP (governance + security)"
+    - "Vault (secrets management)"
+
+# ============================================
+# RESOURCE REQUIREMENTS
+# ============================================
+
+resources:
+  shared_instance:
+    infrastructure:
+      - "Hostinger VPS (existing)"
+      - "Postgres storage (existing)"
+      - "Redis (existing)"
+      - "Additional resources: minimal"
+    
+    llm_usage:
+      - "OpenAI GPT-4o (token-based pricing)"
+      - "Estimated usage: 1000 conversations/month"
+    
+    embeddings:
+      - "text-embedding-004 (token-based)"
+      - "Estimated volume: 100k tokens/month"
+    
+    scalability: "Suitable for small to medium deployments"
+  
+  dedicated_instance:
+    infrastructure:
+      - "Azure Container Apps"
+      - "Postgres Flexible Server"
+      - "Storage Account"
+      - "Isolation level: per tenant"
+    
+    llm_usage: "Same as shared instance"
+    embeddings: "Same as shared instance"
+    
+    scalability: "Suitable for enterprise deployments"

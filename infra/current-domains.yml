@@ -1,0 +1,91 @@
+# Dominios actualmente configurados en Caddy
+# Fecha: 2025-11-18T18:54:25.770Z
+
+active_domains:
+  # Infraestructura y Management
+  - domain: kpi.smarterbot.cl
+    service: metabase
+    backend: smarteros-metabase:3000
+    status: active
+    ssl: lets-encrypt
+    
+  - domain: portainer.smarterbot.cl
+    service: portainer
+    backend: smarter-portainer:9000
+    status: active
+    ssl: lets-encrypt
+    
+  - domain: dokploy.smarterbot.cl
+    service: dokploy
+    backend: dokploy:3000
+    status: active
+    ssl: lets-encrypt
+    
+  - domain: dokploy.smarterbot.store
+    service: dokploy
+    backend: dokploy:3000
+    status: active
+    ssl: lets-encrypt
+    note: "Alias para dokploy.smarterbot.cl"
+    
+  # Backend Services
+  - domain: n8n.smarterbot.cl
+    service: n8n
+    backend: smarter-n8n:5678
+    status: active
+    ssl: lets-encrypt
+    
+  - domain: odoo.smarterbot.cl
+    service: odoo
+    backend: smarter-odoo:8069
+    status: active
+    ssl: lets-encrypt
+    
+  - domain: chatwoot.smarterbot.cl
+    service: chatwoot
+    backend: smarter-chatwoot:3000
+    status: active
+    ssl: lets-encrypt
+    
+  - domain: chat.smarterbot.cl
+    service: botpress
+    backend: smarter-botpress:3000
+    status: active
+    ssl: lets-encrypt
+    
+  # AI Services
+  - domain: ai.smarterbot.store
+    service: nexa-ai
+    backend: nexa-server:8000
+    status: active
+    ssl: lets-encrypt
+
+external_domains:
+  # Dominios gestionados externamente
+  - domain: crm.smarterbot.cl
+    provider: vercel
+    status: active
+    note: "Debe permanecer en Vercel"
+    
+  - domain: api.smarterbot.cl
+    provider: cloudflare
+    status: error-1033
+    note: "Argo Tunnel no configurado"
+    
+  - domain: ai.smarterbot.cl
+    provider: cloudflare
+    status: error-1033
+    note: "Conflicto con ai.smarterbot.store"
+    
+  - domain: mkt.smarterbot.cl
+    status: dns-not-resolved
+    note: "Frontend planificado, no deployado"
+
+infrastructure:
+  reverse_proxy: caddy-2-alpine
+  ssl_provider: lets-encrypt
+  http3_enabled: true
+  ports:
+    http: 80
+    https: 443
+    metrics: 2019

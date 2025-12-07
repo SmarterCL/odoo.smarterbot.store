@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# Direct Vercel ENV update via dashboard
+echo "⚠️  MANUAL STEPS REQUIRED:"
+echo ""
+echo "1. Go to: https://vercel.com/smarters-projects/app-smarterbot-store/settings/environment-variables"
+echo "2. Find: CLERK_SECRET_KEY"
+echo "3. Delete it"
+echo "4. Add new with value:"
+echo ""
+echo "sk_test_74O53iKBUH9ZZLkbZQuCAba3XJIxxBvwxTNY0lifPzhazlo"
+echo ""
+echo "5. Go to: https://vercel.com/smarters-projects/app-smarterbot-cl/settings/environment-variables"
+echo "6. Find: CLERK_SECRET_KEY"  
+echo "7. Delete it"
+echo "8. Add new with value:"
+echo ""
+echo "sk_test_74O53iKBUH9ZZLkbZQuCAba3XJIxxBvwxTNY0lifPzhazlo"
+echo ""
+echo "9. Redeploy both projects"

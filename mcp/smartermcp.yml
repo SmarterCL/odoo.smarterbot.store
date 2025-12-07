@@ -1,0 +1,1286 @@
+# 🤖 SmarterMCP — Official MCP Server
+# SmarterOS's proprietary Model Context Protocol server
+
+version: "1.0.0"
+codename: "Genesis"
+status: "active"
+updated: "2025-11-16"
+
+metadata:
+  name: "SmarterMCP"
+  description: "Multi-tenant business automation MCP server exposing SmarterOS services"
+  author: "SmarterCL"
+  repository: "https://github.com/SmarterCL/smartermcp-server"
+  license: "Proprietary"
+  tier: 1
+  category: "core"
+  required: true
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# MCP Server Configuration
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+mcp_server:
+  name: "smartermcp"
+  package: "@smartercl/mcp-server"
+  deployment: "self-hosted"
+  endpoint: "https://mcp.smarterbot.cl"
+  connection: "mcp-remote"
+  runtime: "Node.js 20"
+  framework: "FastMCP"
+  
+  repository:
+    github: "SmarterCL/smartermcp-server"
+    branch: "main"
+    npm_package: "@smartercl/mcp-server"
+  
+  installation:
+    via_npm: "npm install -g @smartercl/mcp-server"
+    via_docker: "docker pull smartercl/mcp-server:latest"
+    via_binary: "curl -fsSL https://mcp.smarterbot.cl/install.sh | sh"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Authentication & Security
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+auth:
+  method: "api-token"
+  vault_path: "smarteros/mcp/smartermcp"
+  vault_policy: "mcp-smartermcp-read"
+  
+  credentials:
+    api_token:
+      description: "SmarterMCP API token"
+      required: true
+      vault_key: "api_token"
+      
+    tenant_id:
+      description: "Multi-tenant identifier"
+      required: true
+      vault_key: "tenant_id"
+      
+    endpoint:
+      description: "MCP server endpoint"
+      default: "https://mcp.smarterbot.cl"
+      vault_key: "endpoint"
+  
+  setup: |
+    # 1. Generate API token
+    curl -X POST https://mcp.smarterbot.cl/auth/token \
+      -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+      -d '{"name": "my-agent", "scopes": ["read:services", "write:workflows"]}'
+    
+    # 2. Store in Vault
+    vault kv put smarteros/mcp/smartermcp \
+      api_token="smcp_xxxxxxxxxxxxx" \
+      tenant_id="tenant-uuid" \
+      endpoint="https://mcp.smarterbot.cl"
+    
+    # 3. Apply policy
+    vault policy write mcp-smartermcp-read \
+      smarteros-specs/vault/policies/mcp-smartermcp-read.hcl
+  
+  scopes:
+    read_services: "List and read service configurations"
+    write_workflows: "Create and trigger N8N workflows"
+    read_analytics: "Access Metabase dashboards and KPIs"
+    write_crm: "Create/update Odoo CRM records"
+    read_support: "Access Chatwoot conversations"
+    write_bots: "Deploy and configure Botpress bots"
+    admin_tenants: "Manage multi-tenant configurations"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Agent Assignments
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+agents:
+  primary_agent: "executor-codex"
+  secondary_agents: ["director-gemini", "writer-copilot"]
+  
+  capabilities:
+    codex:
+      services:
+        - "services_list"
+        - "services_health"
+        - "services_deploy"
+        - "services_restart"
+        - "services_logs"
+      
+      workflows:
+        - "workflows_list"
+        - "workflows_trigger"
+        - "workflows_status"
+        - "workflows_create"
+      
+      infrastructure:
+        - "infra_status"
+        - "infra_metrics"
+        - "containers_list"
+        - "containers_restart"
+      
+      use_cases:
+        - "Deploy new services"
+        - "Restart failed containers"
+        - "Trigger backup workflows"
+        - "Scale services"
+        - "Monitor infrastructure"
+    
+    gemini:
+      analytics:
+        - "analytics_kpis"
+        - "analytics_dashboards"
+        - "analytics_reports"
+      
+      crm:
+        - "crm_contacts_list"
+        - "crm_contacts_search"
+        - "crm_opportunities_list"
+        - "crm_pipeline_status"
+      
+      support:
+        - "support_conversations_list"
+        - "support_conversations_search"
+        - "support_agents_status"
+        - "support_metrics"
+      
+      bots:
+        - "bots_list"
+        - "bots_conversations"
+        - "bots_analytics"
+      
+      use_cases:
+        - "Strategic planning from KPIs"
+        - "Customer insights from support data"
+        - "Sales pipeline analysis"
+        - "Bot performance monitoring"
+    
+    copilot:
+      documentation:
+        - "docs_services"
+        - "docs_apis"
+        - "docs_schemas"
+      
+      code_generation:
+        - "generate_n8n_workflow"
+        - "generate_botpress_skill"
+        - "generate_api_client"
+      
+      use_cases:
+        - "Generate workflow code"
+        - "Create bot skills"
+        - "Scaffold API integrations"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Exposed Services & Tools
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+tools:
+  # ─────────────────────────────────────────
+  # Services Management
+  # ─────────────────────────────────────────
+  
+  - name: "services_list"
+    description: "List all SmarterOS services with status"
+    category: "services"
+    agent: "codex"
+    parameters:
+      filter:
+        type: "string"
+        enum: ["all", "frontend", "backend", "infrastructure"]
+        default: "all"
+        description: "Filter services by type"
+      
+      status:
+        type: "string"
+        enum: ["all", "active", "inactive", "error"]
+        default: "all"
+        description: "Filter by service status"
+    
+    returns:
+      type: "array"
+      items:
+        - id: "service unique identifier"
+        - name: "service name"
+        - type: "frontend|backend|infrastructure"
+        - status: "active|inactive|error"
+        - url: "service URL"
+        - health: "health check status"
+    
+    example: |
+      services_list(filter="backend", status="active")
+      → Returns: n8n, supabase, odoo, chatwoot, botpress
+  
+  - name: "services_health"
+    description: "Check health status of services"
+    category: "services"
+    agent: "codex"
+    parameters:
+      service_id:
+        type: "string"
+        required: false
+        description: "Specific service ID, or 'all' for all services"
+    
+    returns:
+      type: "object"
+      properties:
+        service_id: "string"
+        status: "healthy|degraded|down"
+        uptime: "seconds"
+        last_check: "ISO timestamp"
+        response_time: "milliseconds"
+        error: "error message if unhealthy"
+    
+    example: |
+      services_health(service_id="n8n")
+      → Returns: {"status": "healthy", "uptime": 86400, "response_time": 45}
+  
+  - name: "services_deploy"
+    description: "Deploy or redeploy a service"
+    category: "services"
+    agent: "codex"
+    parameters:
+      service_id:
+        type: "string"
+        required: true
+        description: "Service to deploy"
+      
+      version:
+        type: "string"
+        default: "latest"
+        description: "Version/tag to deploy"
+      
+      force:
+        type: "boolean"
+        default: false
+        description: "Force redeploy even if already running"
+    
+    returns:
+      type: "object"
+      properties:
+        deployment_id: "unique deployment ID"
+        service_id: "deployed service"
+        status: "deploying|deployed|failed"
+        logs_url: "URL to deployment logs"
+    
+    example: |
+      services_deploy(service_id="n8n", version="1.62.0", force=true)
+  
+  - name: "services_restart"
+    description: "Restart a running service"
+    category: "services"
+    agent: "codex"
+    parameters:
+      service_id:
+        type: "string"
+        required: true
+        description: "Service to restart"
+    
+    returns:
+      type: "object"
+      properties:
+        service_id: "string"
+        previous_uptime: "seconds"
+        restart_time: "ISO timestamp"
+        new_status: "starting|running|failed"
+    
+    example: |
+      services_restart(service_id="chatwoot")
+  
+  - name: "services_logs"
+    description: "Fetch service logs"
+    category: "services"
+    agent: "codex"
+    parameters:
+      service_id:
+        type: "string"
+        required: true
+        description: "Service to get logs from"
+      
+      lines:
+        type: "integer"
+        default: 100
+        description: "Number of log lines to fetch"
+      
+      follow:
+        type: "boolean"
+        default: false
+        description: "Stream logs in real-time"
+    
+    returns:
+      type: "string"
+      description: "Log output"
+    
+    example: |
+      services_logs(service_id="n8n", lines=50)
+  
+  # ─────────────────────────────────────────
+  # N8N Workflows
+  # ─────────────────────────────────────────
+  
+  - name: "workflows_list"
+    description: "List all N8N workflows"
+    category: "workflows"
+    agent: "codex"
+    parameters:
+      active:
+        type: "boolean"
+        default: null
+        description: "Filter by active/inactive, or null for all"
+      
+      tags:
+        type: "array"
+        items: "string"
+        description: "Filter by workflow tags"
+    
+    returns:
+      type: "array"
+      items:
+        - id: "workflow ID"
+        - name: "workflow name"
+        - active: "boolean"
+        - tags: "array of tags"
+        - nodes_count: "number of nodes"
+        - last_execution: "ISO timestamp"
+    
+    example: |
+      workflows_list(active=true, tags=["automation", "crm"])
+  
+  - name: "workflows_trigger"
+    description: "Manually trigger a workflow execution"
+    category: "workflows"
+    agent: "codex"
+    parameters:
+      workflow_id:
+        type: "string"
+        required: true
+        description: "Workflow to trigger"
+      
+      input_data:
+        type: "object"
+        description: "Input data for the workflow"
+    
+    returns:
+      type: "object"
+      properties:
+        execution_id: "execution ID"
+        workflow_id: "workflow ID"
+        status: "running|completed|failed"
+        started_at: "ISO timestamp"
+    
+    example: |
+      workflows_trigger(
+        workflow_id="wf_backup_db",
+        input_data={"database": "smarteros", "compress": true}
+      )
+  
+  - name: "workflows_status"
+    description: "Get execution status of a workflow"
+    category: "workflows"
+    agent: "codex"
+    parameters:
+      execution_id:
+        type: "string"
+        required: true
+        description: "Execution ID to check"
+    
+    returns:
+      type: "object"
+      properties:
+        execution_id: "string"
+        workflow_id: "string"
+        status: "running|completed|failed|waiting"
+        started_at: "ISO timestamp"
+        finished_at: "ISO timestamp or null"
+        output: "execution output data"
+        error: "error message if failed"
+    
+    example: |
+      workflows_status(execution_id="exec_abc123")
+  
+  - name: "workflows_create"
+    description: "Create a new N8N workflow from JSON"
+    category: "workflows"
+    agent: "copilot"
+    parameters:
+      name:
+        type: "string"
+        required: true
+        description: "Workflow name"
+      
+      workflow_json:
+        type: "object"
+        required: true
+        description: "N8N workflow definition"
+      
+      tags:
+        type: "array"
+        items: "string"
+        description: "Workflow tags"
+    
+    returns:
+      type: "object"
+      properties:
+        workflow_id: "created workflow ID"
+        name: "workflow name"
+        url: "URL to edit workflow in N8N"
+    
+    example: |
+      workflows_create(
+        name="Sync Contacts",
+        workflow_json={...},
+        tags=["crm", "automation"]
+      )
+  
+  # ─────────────────────────────────────────
+  # Analytics (Metabase)
+  # ─────────────────────────────────────────
+  
+  - name: "analytics_kpis"
+    description: "Get current KPI values"
+    category: "analytics"
+    agent: "gemini"
+    parameters:
+      kpis:
+        type: "array"
+        items: "string"
+        description: "List of KPI names, or empty for all"
+    
+    returns:
+      type: "object"
+      description: "Key-value pairs of KPI names and values"
+    
+    example: |
+      analytics_kpis(kpis=["total_users", "revenue_mtd", "conversion_rate"])
+      → Returns: {"total_users": 1250, "revenue_mtd": 45780, "conversion_rate": 3.2}
+  
+  - name: "analytics_dashboards"
+    description: "List available Metabase dashboards"
+    category: "analytics"
+    agent: "gemini"
+    parameters: {}
+    
+    returns:
+      type: "array"
+      items:
+        - id: "dashboard ID"
+        - name: "dashboard name"
+        - url: "dashboard URL"
+        - description: "dashboard description"
+    
+    example: |
+      analytics_dashboards()
+      → Returns: [{"id": 1, "name": "Sales Overview", "url": "https://..."}]
+  
+  - name: "analytics_reports"
+    description: "Generate analytics report from query"
+    category: "analytics"
+    agent: "gemini"
+    parameters:
+      query:
+        type: "string"
+        required: true
+        description: "Natural language query for report"
+      
+      format:
+        type: "string"
+        enum: ["json", "csv", "markdown"]
+        default: "json"
+        description: "Report output format"
+    
+    returns:
+      type: "string"
+      description: "Report data in requested format"
+    
+    example: |
+      analytics_reports(
+        query="Show me top 10 customers by revenue this month",
+        format="markdown"
+      )
+  
+  # ─────────────────────────────────────────
+  # CRM (Odoo)
+  # ─────────────────────────────────────────
+  
+  - name: "crm_contacts_list"
+    description: "List CRM contacts"
+    category: "crm"
+    agent: "gemini"
+    parameters:
+      limit:
+        type: "integer"
+        default: 100
+        description: "Max contacts to return"
+      
+      filter:
+        type: "object"
+        description: "Filter criteria (e.g., {country: 'CL', type: 'customer'})"
+    
+    returns:
+      type: "array"
+      items:
+        - id: "contact ID"
+        - name: "contact name"
+        - email: "contact email"
+        - phone: "contact phone"
+        - company: "company name"
+        - tags: "array of tags"
+    
+    example: |
+      crm_contacts_list(limit=50, filter={country: "CL", type: "lead"})
+  
+  - name: "crm_contacts_search"
+    description: "Search contacts by query"
+    category: "crm"
+    agent: "gemini"
+    parameters:
+      query:
+        type: "string"
+        required: true
+        description: "Search query (name, email, phone, etc)"
+    
+    returns:
+      type: "array"
+      description: "Matching contacts"
+    
+    example: |
+      crm_contacts_search(query="john@example.com")
+  
+  - name: "crm_opportunities_list"
+    description: "List sales opportunities"
+    category: "crm"
+    agent: "gemini"
+    parameters:
+      stage:
+        type: "string"
+        enum: ["all", "new", "qualified", "proposal", "negotiation", "won", "lost"]
+        default: "all"
+        description: "Filter by opportunity stage"
+    
+    returns:
+      type: "array"
+      items:
+        - id: "opportunity ID"
+        - name: "opportunity name"
+        - contact: "contact name"
+        - stage: "current stage"
+        - expected_revenue: "expected revenue"
+        - probability: "win probability %"
+    
+    example: |
+      crm_opportunities_list(stage="negotiation")
+  
+  - name: "crm_pipeline_status"
+    description: "Get sales pipeline overview"
+    category: "crm"
+    agent: "gemini"
+    parameters: {}
+    
+    returns:
+      type: "object"
+      properties:
+        total_opportunities: "count"
+        total_value: "sum of expected revenue"
+        by_stage: "breakdown by stage"
+        conversion_rate: "overall conversion rate"
+    
+    example: |
+      crm_pipeline_status()
+  
+  # ─────────────────────────────────────────
+  # Support (Chatwoot)
+  # ─────────────────────────────────────────
+  
+  - name: "support_conversations_list"
+    description: "List support conversations"
+    category: "support"
+    agent: "gemini"
+    parameters:
+      status:
+        type: "string"
+        enum: ["all", "open", "pending", "resolved"]
+        default: "open"
+        description: "Filter by conversation status"
+      
+      assignee:
+        type: "string"
+        description: "Filter by assigned agent ID"
+      
+      limit:
+        type: "integer"
+        default: 50
+        description: "Max conversations to return"
+    
+    returns:
+      type: "array"
+      items:
+        - id: "conversation ID"
+        - contact: "contact info"
+        - status: "conversation status"
+        - assignee: "assigned agent"
+        - last_message: "last message preview"
+        - unread_count: "unread messages"
+    
+    example: |
+      support_conversations_list(status="open", limit=20)
+  
+  - name: "support_conversations_search"
+    description: "Search conversations by content or contact"
+    category: "support"
+    agent: "gemini"
+    parameters:
+      query:
+        type: "string"
+        required: true
+        description: "Search query"
+    
+    returns:
+      type: "array"
+      description: "Matching conversations"
+    
+    example: |
+      support_conversations_search(query="refund request")
+  
+  - name: "support_agents_status"
+    description: "Get support agents availability"
+    category: "support"
+    agent: "gemini"
+    parameters: {}
+    
+    returns:
+      type: "array"
+      items:
+        - agent_id: "agent ID"
+        - name: "agent name"
+        - status: "online|offline|away"
+        - active_conversations: "count"
+    
+    example: |
+      support_agents_status()
+  
+  - name: "support_metrics"
+    description: "Get support team metrics"
+    category: "support"
+    agent: "gemini"
+    parameters:
+      period:
+        type: "string"
+        enum: ["today", "week", "month"]
+        default: "today"
+        description: "Metrics time period"
+    
+    returns:
+      type: "object"
+      properties:
+        total_conversations: "count"
+        resolved_conversations: "count"
+        avg_first_response_time: "seconds"
+        avg_resolution_time: "seconds"
+        satisfaction_score: "CSAT score"
+    
+    example: |
+      support_metrics(period="week")
+  
+  # ─────────────────────────────────────────
+  # Bots (Botpress)
+  # ─────────────────────────────────────────
+  
+  - name: "bots_list"
+    description: "List deployed Botpress bots"
+    category: "bots"
+    agent: "gemini"
+    parameters: {}
+    
+    returns:
+      type: "array"
+      items:
+        - id: "bot ID"
+        - name: "bot name"
+        - status: "active|inactive"
+        - channels: "array of connected channels"
+        - conversations_count: "total conversations"
+    
+    example: |
+      bots_list()
+  
+  - name: "bots_conversations"
+    description: "Get bot conversation history"
+    category: "bots"
+    agent: "gemini"
+    parameters:
+      bot_id:
+        type: "string"
+        required: true
+        description: "Bot ID"
+      
+      limit:
+        type: "integer"
+        default: 50
+        description: "Max conversations to return"
+    
+    returns:
+      type: "array"
+      items:
+        - conversation_id: "conversation ID"
+        - user_id: "user ID"
+        - channel: "channel name"
+        - messages_count: "total messages"
+        - started_at: "ISO timestamp"
+    
+    example: |
+      bots_conversations(bot_id="bot_abc123", limit=20)
+  
+  - name: "bots_analytics"
+    description: "Get bot performance analytics"
+    category: "bots"
+    agent: "gemini"
+    parameters:
+      bot_id:
+        type: "string"
+        required: true
+        description: "Bot ID"
+      
+      period:
+        type: "string"
+        enum: ["today", "week", "month"]
+        default: "week"
+        description: "Analytics time period"
+    
+    returns:
+      type: "object"
+      properties:
+        total_conversations: "count"
+        total_messages: "count"
+        avg_conversation_length: "message count"
+        completion_rate: "percentage"
+        top_intents: "array of most triggered intents"
+    
+    example: |
+      bots_analytics(bot_id="bot_abc123", period="month")
+  
+  # ─────────────────────────────────────────
+  # Infrastructure
+  # ─────────────────────────────────────────
+  
+  - name: "infra_status"
+    description: "Get infrastructure status overview"
+    category: "infrastructure"
+    agent: "codex"
+    parameters: {}
+    
+    returns:
+      type: "object"
+      properties:
+        vps_status: "up|down"
+        cpu_usage: "percentage"
+        memory_usage: "percentage"
+        disk_usage: "percentage"
+        container_stats: "running/total containers"
+        services_health: "healthy/total services"
+    
+    example: |
+      infra_status()
+      → Returns: {"vps_status": "up", "cpu_usage": 35, "memory_usage": 62, ...}
+  
+  - name: "infra_metrics"
+    description: "Get detailed infrastructure metrics"
+    category: "infrastructure"
+    agent: "codex"
+    parameters:
+      metric:
+        type: "string"
+        enum: ["cpu", "memory", "disk", "network", "all"]
+        default: "all"
+        description: "Metric type to fetch"
+      
+      period:
+        type: "string"
+        enum: ["1h", "6h", "24h", "7d"]
+        default: "1h"
+        description: "Time period for metrics"
+    
+    returns:
+      type: "object"
+      description: "Time-series metrics data"
+    
+    example: |
+      infra_metrics(metric="cpu", period="24h")
+  
+  - name: "containers_list"
+    description: "List Docker containers"
+    category: "infrastructure"
+    agent: "codex"
+    parameters:
+      filter:
+        type: "string"
+        enum: ["all", "running", "stopped", "error"]
+        default: "all"
+        description: "Filter containers by status"
+    
+    returns:
+      type: "array"
+      items:
+        - id: "container ID"
+        - name: "container name"
+        - image: "Docker image"
+        - status: "running|stopped|error"
+        - uptime: "seconds"
+        - ports: "exposed ports"
+    
+    example: |
+      containers_list(filter="running")
+  
+  - name: "containers_restart"
+    description: "Restart a Docker container"
+    category: "infrastructure"
+    agent: "codex"
+    parameters:
+      container_id:
+        type: "string"
+        required: true
+        description: "Container ID or name"
+    
+    returns:
+      type: "object"
+      properties:
+        container_id: "string"
+        status: "restarting|restarted|failed"
+        restart_time: "ISO timestamp"
+    
+    example: |
+      containers_restart(container_id="n8n")
+  
+  # ─────────────────────────────────────────
+  # Documentation & Code Generation
+  # ─────────────────────────────────────────
+  
+  - name: "docs_services"
+    description: "Get service documentation"
+    category: "documentation"
+    agent: "copilot"
+    parameters:
+      service_id:
+        type: "string"
+        required: true
+        description: "Service to get docs for"
+    
+    returns:
+      type: "object"
+      properties:
+        service_id: "string"
+        description: "service description"
+        tech_stack: "technologies used"
+        api_endpoints: "available API endpoints"
+        examples: "usage examples"
+    
+    example: |
+      docs_services(service_id="n8n")
+  
+  - name: "docs_apis"
+    description: "Get API documentation for a service"
+    category: "documentation"
+    agent: "copilot"
+    parameters:
+      service_id:
+        type: "string"
+        required: true
+        description: "Service ID"
+    
+    returns:
+      type: "object"
+      description: "OpenAPI/Swagger spec or API documentation"
+    
+    example: |
+      docs_apis(service_id="supabase")
+  
+  - name: "docs_schemas"
+    description: "Get database schemas"
+    category: "documentation"
+    agent: "copilot"
+    parameters:
+      database:
+        type: "string"
+        enum: ["smarteros", "supabase", "n8n", "odoo"]
+        required: true
+        description: "Database to get schema from"
+    
+    returns:
+      type: "object"
+      description: "Database schema with tables, columns, relationships"
+    
+    example: |
+      docs_schemas(database="supabase")
+  
+  - name: "generate_n8n_workflow"
+    description: "Generate N8N workflow from description"
+    category: "code_generation"
+    agent: "copilot"
+    parameters:
+      description:
+        type: "string"
+        required: true
+        description: "Natural language workflow description"
+      
+      services:
+        type: "array"
+        items: "string"
+        description: "Services to integrate (e.g., ['shopify', 'supabase'])"
+    
+    returns:
+      type: "object"
+      properties:
+        workflow_json: "N8N workflow definition"
+        explanation: "step-by-step explanation"
+    
+    example: |
+      generate_n8n_workflow(
+        description="When a new Shopify order is created, save it to Supabase",
+        services=["shopify", "supabase"]
+      )
+  
+  - name: "generate_botpress_skill"
+    description: "Generate Botpress skill/flow from description"
+    category: "code_generation"
+    agent: "copilot"
+    parameters:
+      description:
+        type: "string"
+        required: true
+        description: "Skill description"
+    
+    returns:
+      type: "object"
+      properties:
+        skill_json: "Botpress skill definition"
+        intents: "required intents"
+        actions: "custom actions code"
+    
+    example: |
+      generate_botpress_skill(
+        description="Help users track their order status"
+      )
+  
+  - name: "generate_api_client"
+    description: "Generate API client code for a service"
+    category: "code_generation"
+    agent: "copilot"
+    parameters:
+      service_id:
+        type: "string"
+        required: true
+        description: "Service to generate client for"
+      
+      language:
+        type: "string"
+        enum: ["typescript", "python", "javascript"]
+        default: "typescript"
+        description: "Target language"
+    
+    returns:
+      type: "string"
+      description: "Generated client code"
+    
+    example: |
+      generate_api_client(service_id="n8n", language="typescript")
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Rate Limits & Quotas
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+rate_limits:
+  default:
+    requests_per_minute: 100
+    requests_per_hour: 5000
+    burst: 20
+  
+  by_category:
+    services:
+      requests_per_minute: 50
+      note: "Service management operations"
+    
+    workflows:
+      requests_per_minute: 30
+      note: "Workflow operations (trigger/create)"
+    
+    analytics:
+      requests_per_minute: 20
+      note: "Analytics queries can be expensive"
+    
+    crm:
+      requests_per_minute: 100
+      note: "CRM operations (Odoo API)"
+    
+    support:
+      requests_per_minute: 100
+      note: "Support operations (Chatwoot API)"
+    
+    bots:
+      requests_per_minute: 50
+      note: "Bot operations (Botpress API)"
+    
+    infrastructure:
+      requests_per_minute: 20
+      note: "Infrastructure operations (critical)"
+    
+    documentation:
+      requests_per_minute: 50
+      note: "Read-only documentation access"
+    
+    code_generation:
+      requests_per_minute: 10
+      requests_per_hour: 100
+      note: "AI-powered code generation (expensive)"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Multi-tenant Support
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+multi_tenant:
+  enabled: true
+  
+  tenant_isolation:
+    services: "Each tenant has isolated service instances"
+    workflows: "Workflows are tenant-scoped"
+    data: "Complete data isolation via RLS in Supabase"
+    analytics: "Tenant-specific dashboards"
+    crm: "Odoo multi-company support"
+    support: "Chatwoot account separation"
+    bots: "Botpress workspace isolation"
+  
+  tenant_id:
+    required: true
+    provided_via: "API token or X-Tenant-ID header"
+    validation: "UUID v4 format"
+  
+  billing:
+    tracked_metrics:
+      - "API calls per tenant"
+      - "Workflow executions"
+      - "Storage usage"
+      - "AI operations (code generation)"
+    
+    quotas:
+      free_tier:
+        api_calls: 1000
+        workflows: 10
+        storage_gb: 5
+        code_generations: 50
+      
+      pro_tier:
+        api_calls: 100000
+        workflows: 1000
+        storage_gb: 100
+        code_generations: 1000
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Monitoring & Health
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+monitoring:
+  health_endpoint: "https://mcp.smarterbot.cl/health"
+  metrics_endpoint: "https://mcp.smarterbot.cl/metrics"
+  status_page: "https://status.smarterbot.cl"
+  
+  health_checks:
+    interval: "30s"
+    timeout: "5s"
+    
+    checks:
+      - endpoint: "/health"
+        expect: "200 OK"
+      
+      - endpoint: "/health/services"
+        expect: "all services reachable"
+      
+      - endpoint: "/health/database"
+        expect: "database connected"
+  
+  metrics:
+    - "mcp_requests_total{tool, agent, status}"
+    - "mcp_request_duration_seconds{tool}"
+    - "mcp_errors_total{tool, error_type}"
+    - "mcp_rate_limit_exceeded{agent}"
+    - "mcp_active_connections"
+  
+  logging:
+    level: "info"
+    format: "json"
+    includes:
+      - timestamp
+      - tenant_id
+      - agent
+      - tool
+      - parameters_hash
+      - response_status
+      - duration_ms
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Client Configuration Examples
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+client_setup:
+  claude_desktop:
+    file: "~/Library/Application Support/Claude/claude_desktop_config.json"
+    config: |
+      {
+        "mcpServers": {
+          "smartermcp": {
+            "command": "npx",
+            "args": ["-y", "mcp-remote", "https://mcp.smarterbot.cl"],
+            "env": {
+              "SMARTERMCP_API_TOKEN": "smcp_xxxxxxxxxxxxx",
+              "SMARTERMCP_TENANT_ID": "tenant-uuid"
+            }
+          }
+        }
+      }
+  
+  cline_vscode:
+    file: ".vscode/settings.json"
+    config: |
+      {
+        "cline.mcpServers": {
+          "smartermcp": {
+            "command": "npx",
+            "args": ["-y", "mcp-remote", "https://mcp.smarterbot.cl"],
+            "env": {
+              "SMARTERMCP_API_TOKEN": "smcp_xxxxxxxxxxxxx",
+              "SMARTERMCP_TENANT_ID": "tenant-uuid"
+            }
+          }
+        }
+      }
+  
+  python_sdk:
+    install: "pip install smartermcp-client"
+    usage: |
+      from smartermcp import SmarterMCP
+      
+      client = SmarterMCP(
+          api_token="smcp_xxxxxxxxxxxxx",
+          tenant_id="tenant-uuid"
+      )
+      
+      # List services
+      services = client.services.list(filter="backend")
+      
+      # Trigger workflow
+      execution = client.workflows.trigger(
+          workflow_id="wf_backup_db",
+          input_data={"database": "smarteros"}
+      )
+      
+      # Get analytics
+      kpis = client.analytics.kpis(kpis=["revenue_mtd", "conversion_rate"])
+  
+  typescript_sdk:
+    install: "npm install @smartercl/mcp-client"
+    usage: |
+      import { SmarterMCP } from '@smartercl/mcp-client';
+      
+      const client = new SmarterMCP({
+        apiToken: 'smcp_xxxxxxxxxxxxx',
+        tenantId: 'tenant-uuid',
+      });
+      
+      // List services
+      const services = await client.services.list({ filter: 'backend' });
+      
+      // Trigger workflow
+      const execution = await client.workflows.trigger({
+        workflowId: 'wf_backup_db',
+        inputData: { database: 'smarteros' },
+      });
+      
+      // Get analytics
+      const kpis = await client.analytics.kpis({
+        kpis: ['revenue_mtd', 'conversion_rate'],
+      });
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Integration with SmarterOS
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+integration:
+  vault_policy: "smarteros-specs/vault/policies/mcp-smartermcp-read.hcl"
+  mcp_registry: "smarteros-specs/agents/mcp-registry.yml"
+  services_registry: "smarteros-specs/services/registry.yml"
+  
+  agent_workflows:
+    codex_deploy_flow:
+      - "services_health() → check all services"
+      - "containers_list(filter='running') → verify containers"
+      - "services_deploy(service_id='n8n', version='1.62.0')"
+      - "services_logs(service_id='n8n', lines=100) → verify deployment"
+      - "services_health(service_id='n8n') → confirm healthy"
+    
+    gemini_strategic_flow:
+      - "analytics_kpis() → get current performance"
+      - "crm_pipeline_status() → check sales pipeline"
+      - "support_metrics(period='week') → check support health"
+      - "bots_analytics(bot_id='main', period='week') → bot performance"
+      - "Decide: prioritize tasks based on data"
+    
+    copilot_automation_flow:
+      - "docs_services(service_id='n8n') → understand N8N"
+      - "docs_schemas(database='supabase') → get DB schema"
+      - "generate_n8n_workflow(description='...', services=[...])"
+      - "workflows_create(name='...', workflow_json={...})"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Roadmap
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+roadmap:
+  v1_0:
+    - "✅ Core services management (list, health, deploy, restart, logs)"
+    - "✅ N8N workflow operations (list, trigger, status, create)"
+    - "✅ Analytics via Metabase (KPIs, dashboards, reports)"
+    - "✅ CRM integration via Odoo (contacts, opportunities, pipeline)"
+    - "✅ Support via Chatwoot (conversations, agents, metrics)"
+    - "✅ Bots via Botpress (list, conversations, analytics)"
+    - "✅ Infrastructure monitoring (status, metrics, containers)"
+    - "✅ Documentation & code generation"
+    - "✅ Multi-tenant support"
+  
+  v1_1_planned:
+    - "📋 Shopify integration (orders, products, customers)"
+    - "📋 Email automation (Mailgun/SendGrid)"
+    - "📋 WhatsApp Business API integration"
+    - "📋 SMS via Twilio"
+    - "📋 Slack notifications"
+  
+  v2_0_future:
+    - "🔮 AI-powered service recommendations"
+    - "🔮 Automated incident response"
+    - "🔮 Predictive scaling"
+    - "🔮 Advanced multi-tenant analytics"
+    - "🔮 Marketplace for skills & workflows"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Notes
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+notes: |
+  SmarterMCP es el MCP server oficial de SmarterOS que expone
+  todos los servicios del sistema a través de una interfaz unificada
+  y conversacional para AI agents.
+  
+  Ventajas:
+  - Interfaz única para múltiples servicios backend
+  - Multi-tenant nativo
+  - Rate limiting y quotas por tenant
+  - Métricas y monitoring built-in
+  - SDKs para TypeScript y Python
+  - Generación de código con IA
+  - Documentación embebida
+  
+  Casos de uso:
+  - Automatización de operaciones (codex)
+  - Análisis estratégico (gemini)
+  - Generación de workflows y bots (copilot)
+  - Monitoreo de infraestructura
+  - Gestión de servicios multi-tenant
+  
+  El MCP expone 35 tools organizados en 9 categorías,
+  permitiendo a los agentes interactuar con todo el stack
+  de SmarterOS de forma natural y segura.

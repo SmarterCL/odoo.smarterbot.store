@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OdooTenantConfig",
+  "type": "object",
+  "required": ["url", "db", "user", "password"],
+  "properties": {
+    "url": {"type": "string", "format": "uri"},
+    "db": {"type": "string"},
+    "user": {"type": "string", "format": "email"},
+    "password": {"type": "string", "minLength": 6},
+    "modules_enabled": {"type": "array", "items": {"type": "string"}},
+    "currency": {"type": "string", "default": "CLP"}
+  }
+}

@@ -1,0 +1,40 @@
+service:
+  id: fulldaygo-smarterbot
+  name: fulldaygo.smarterbot.cl
+  version: "1.0"
+  tier: 6
+  category: marketplace
+  subdomain: fulldaygo.smarterbot.cl
+
+technology:
+  framework: Next.js (custom)
+  repo: https://github.com/SmarterCL/fulldaygo.smarterbot.cl
+  runtime: Node.js 20
+  port: 3030
+
+auth:
+  provider: supabase
+  shared_session: true
+  origins:
+    - https://app.smarterbot.cl
+    - https://fulldaygo.smarterbot.cl
+
+mcp_providers:
+  - blogbowl-filesystem
+
+deployment:
+  method: docker-compose
+  compose_file: dkcompose/docker-compose.mkt-call.yml
+  container_name: fulldaygo-marketplace
+  proxy: traefik
+  ssl: letsencrypt
+
+environment:
+  - NEXT_PUBLIC_SUPABASE_URL
+  - NEXT_PUBLIC_SUPABASE_ANON_KEY
+  - SUPABASE_SERVICE_ROLE_KEY
+
+notes: |
+  Marketplace de experiencias Full Day Go integrado con login compartido vía Supabase.
+  Los agentes pueden leer/editar contenido mediante MCP filesystem.
+  Comparte infraestructura de autenticación con app.smarterbot.cl.

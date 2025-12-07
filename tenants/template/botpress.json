@@ -1,0 +1,8 @@
+{
+  "url": "https://botpress.smarterbot.cl",
+  "api_key": "REPLACE_API_KEY",
+  "bot_id": "leadbot",
+  "workspace_id": "workspace-main",
+  "intent_threshold": 0.6,
+  "fallback_enabled": true
+}

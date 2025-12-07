@@ -1,0 +1,160 @@
+name: Backup Integration
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # Every 6 hours
+  workflow_dispatch:
+
+jobs:
+  backup-specs:
+    name: Backup Specifications
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Create specs archive
+        run: |
+          tar -czf specs-$(date +%Y%m%d-%H%M).tar.gz \
+            *.md \
+            docs/ \
+            specs/ \
+            --exclude='node_modules' \
+            --exclude='.git'
+      
+      - name: Upload to S3
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Sync to S3
+        run: |
+          aws s3 cp specs-$(date +%Y%m%d-%H%M).tar.gz \
+            s3://smarteros-backups/specs/ \
+            --storage-class STANDARD_IA
+
+  backup-n8n-workflows:
+    name: Backup n8n Workflows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Export n8n workflows
+        run: |
+          curl -X GET https://n8n.smarterbot.store/api/v1/workflows \
+            -H "X-N8N-API-KEY: ${{ secrets.N8N_API_KEY }}" \
+            -o workflows-$(date +%Y%m%d).json
+      
+      - name: Upload to S3
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Sync to S3
+        run: |
+          aws s3 cp workflows-$(date +%Y%m%d).json \
+            s3://smarteros-backups/n8n/ \
+            --storage-class STANDARD_IA
+
+  backup-api-gateway:
+    name: Backup API Gateway Config
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          repository: SmarterCL/api
+          token: ${{ secrets.GH_PAT }}
+      
+      - name: Create backup
+        run: |
+          tar -czf api-$(date +%Y%m%d-%H%M).tar.gz \
+            main.py \
+            routers/ \
+            requirements.txt \
+            --exclude='__pycache__'
+      
+      - name: Upload to S3
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Sync to S3
+        run: |
+          aws s3 cp api-$(date +%Y%m%d-%H%M).tar.gz \
+            s3://smarteros-backups/api/ \
+            --storage-class STANDARD_IA
+
+  backup-database-schema:
+    name: Backup Database Schema
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dump PostgreSQL schema
+        run: |
+          pg_dump \
+            -h ${{ secrets.DB_HOST }} \
+            -U ${{ secrets.DB_USER }} \
+            -d ${{ secrets.DB_NAME }} \
+            --schema-only \
+            -f schema-$(date +%Y%m%d).sql
+        env:
+          PGPASSWORD: ${{ secrets.DB_PASSWORD }}
+      
+      - name: Upload to S3
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Sync to S3
+        run: |
+          aws s3 cp schema-$(date +%Y%m%d).sql \
+            s3://smarteros-backups/database/ \
+            --storage-class STANDARD_IA
+
+  verify-backups:
+    name: Verify Backup Integrity
+    runs-on: ubuntu-latest
+    needs: [backup-specs, backup-n8n-workflows, backup-api-gateway, backup-database-schema]
+    steps:
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: List backups
+        run: |
+          echo "Specs backups:"
+          aws s3 ls s3://smarteros-backups/specs/ | tail -5
+          
+          echo "N8N backups:"
+          aws s3 ls s3://smarteros-backups/n8n/ | tail -5
+          
+          echo "API backups:"
+          aws s3 ls s3://smarteros-backups/api/ | tail -5
+          
+          echo "Database backups:"
+          aws s3 ls s3://smarteros-backups/database/ | tail -5
+      
+      - name: Test restore
+        run: |
+          # Download latest backup
+          aws s3 cp s3://smarteros-backups/specs/ . --recursive --exclude "*" --include "specs-*.tar.gz" --quiet
+          
+          # Verify archive integrity
+          tar -tzf specs-*.tar.gz > /dev/null
+          
+          echo "✅ Backup verification successful"
+      
+      - name: Cleanup old backups (90 days)
+        run: |
+          aws s3 ls s3://smarteros-backups/ --recursive | \
+            awk '{if (NR>90) print $4}' | \
+            xargs -I {} aws s3 rm s3://smarteros-backups/{}

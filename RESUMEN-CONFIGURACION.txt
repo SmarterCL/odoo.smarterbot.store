@@ -1,0 +1,166 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                  🎉 SMARTERAGENT N8N - CONFIGURACIÓN LISTA                   ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+📅 Fecha: $(date '+%Y-%m-%d %H:%M:%S')
+🔗 Workflow: https://n8n.smarterbot.cl/workflow/BWdJF4keyeKKIfaS
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                         📦 ARCHIVOS CREADOS                                  ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+/root/smarter-agent-setup.md          (8.4 KB) - Guía completa paso a paso
+/root/n8n-visual-guide.txt           (14 KB)  - Diagramas visuales ASCII
+/root/n8n-config-examples.json       (7.4 KB) - Ejemplos configuración JSON
+/root/quick-setup-n8n.sh             (3.0 KB) - Script instalación automática
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                      🎯 LO QUE DEBES HACER AHORA                             ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+1. Abre: https://n8n.smarterbot.cl/workflow/BWdJF4keyeKKIfaS
+
+2. Sigue la guía visual:
+   $ cat /root/n8n-visual-guide.txt
+
+3. O la guía detallada:
+   $ cat /root/smarter-agent-setup.md
+
+4. Copia configuraciones desde:
+   $ cat /root/n8n-config-examples.json
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    ✅ CHECKLIST DE CONFIGURACIÓN                             ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+En N8N Workflow BWdJF4keyeKKIfaS:
+
+□ 1. Agregar Memory (Window Buffer, contexto 10)
+□ 2. Agregar Tool: GitHub Search (HTTP Request)
+□ 3. Agregar Tool: Web Search (Tavily API)
+□ 4. Agregar Tool: Filesystem (Execute Command)
+□ 5. Agregar Webhook para WhatsApp (opcional)
+□ 6. Actualizar System Message del Agent
+□ 7. Configurar OpenAI Model (gpt-4o)
+□ 8. Activar workflow
+□ 9. Probar en Chat
+□ 10. Configurar WhatsApp (si aplica)
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                       🔑 APIS Y CREDENCIALES NECESARIAS                      ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+✅ OpenAI API Key: Ya configurado
+⚠️  Tavily API Key: Obtener en https://tavily.com (gratis)
+⚠️  GitHub Token (opcional): https://github.com/settings/tokens
+⚠️  Evolution API (WhatsApp): Instalar con script
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                         🧪 QUERIES DE PRUEBA                                 ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+GitHub Search:
+• "Busca ejemplos de React hooks en GitHub"
+• "Encuentra implementaciones de Docker Compose"
+• "Muéstrame código Python para APIs REST"
+
+Web Search:
+• "¿Cuáles son las últimas noticias sobre IA?"
+• "Documentación de Next.js 14"
+• "Mejores prácticas de seguridad en Node.js"
+
+Filesystem:
+• "Lee el archivo README.md"
+• "Busca 'docker' en los archivos de configuración"
+• "Muéstrame el contenido de traefik.yml"
+
+Combinado:
+• "Busca ejemplos de React en GitHub y explícame los hooks"
+• "¿Qué es Docker Compose y muéstrame ejemplos locales?"
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                      📊 ESTADO ACTUAL DEL VPS                                ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Servicios Core:
+✅ Traefik v3.6.1 (proxy reverso)
+✅ Dokploy (panel control)
+✅ N8N (automation)
+✅ Postgres + Redis
+
+Aplicaciones:
+✅ Chatwoot, Botpress, N8N, Metabase
+✅ Odoo, Portainer
+✅ Nexa Server
+
+Estado Recursos:
+CPU: Load ~0.20 (excelente)
+RAM: 4GB/8GB (50% - óptimo)
+Disco: 42GB/96GB (44% - saludable)
+
+Rutas Activas:
+• https://n8n.smarterbot.cl
+• https://chat.smarterbot.cl
+• https://chatwoot.smarterbot.cl
+• https://kpi.smarterbot.cl
+• https://odoo.smarterbot.cl
+• https://portainer.smarterbot.cl
+• https://ai.smarterbot.store
+• https://smarterbot.store
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                      🚀 COMANDOS ÚTILES                                      ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Ver documentación:
+$ cat /root/smarter-agent-setup.md
+$ cat /root/n8n-visual-guide.txt
+
+Ver ejemplos:
+$ cat /root/n8n-config-examples.json | jq .
+
+Setup automático WhatsApp:
+$ bash /root/quick-setup-n8n.sh
+
+Ver logs N8N:
+$ docker logs -f smarter-n8n
+
+Reiniciar N8N:
+$ docker restart smarter-n8n
+
+Ver estado servicios:
+$ docker ps --format "table {{.Names}}\t{{.Status}}"
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                      💡 PRÓXIMOS PASOS RECOMENDADOS                          ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+1. Configurar herramientas MCP en N8N (5 minutos)
+2. Obtener Tavily API key para web search
+3. Probar el agente con queries de ejemplo
+4. (Opcional) Instalar Evolution API para WhatsApp
+5. Monitorear ejecuciones en N8N dashboard
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                      🆘 SOPORTE Y TROUBLESHOOTING                            ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Problema: Tools no funcionan
+→ Verifica descripciones claras
+→ Revisa que estén conectados al Agent
+→ Chequea logs: docker logs smarter-n8n
+
+Problema: WhatsApp no responde
+→ Verifica webhook configurado
+→ Chequea Evolution API: docker ps | grep evolution
+→ Revisa logs: docker logs evolution-api
+
+Problema: Rate limit GitHub
+→ Agrega GitHub token en configuración
+→ Obtén en: https://github.com/settings/tokens
+
+Documentación:
+• N8N Docs: https://docs.n8n.io/
+• LangChain Tools: https://docs.n8n.io/integrations/builtin/cluster-nodes/
+• Evolution API: https://doc.evolution-api.com/
+

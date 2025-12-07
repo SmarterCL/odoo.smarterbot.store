@@ -1,0 +1,181 @@
+openapi: 3.1.0
+info:
+  title: SmarterOS Core API
+  version: 0.1.0
+  summary: API pública multi-tenant para nodos publicados de SmarterOS
+  description: |
+    API gateway versionada protegida por Vault (tokens efímeros) y Clerk.
+    Cada endpoint exige `X-SMOS-Tenant` y `Authorization: Bearer <vault_token>`.
+servers:
+  - url: https://api.smarterbot.cl/v1
+    description: Production v1
+tags:
+  - name: tenants
+  - name: users
+  - name: messages
+  - name: events
+  - name: billing
+  - name: n8n
+  - name: shopify
+  - name: chatwoot
+  - name: whatsapp
+  - name: supabase
+  - name: vault
+  - name: redpanda
+components:
+  securitySchemes:
+    vaultToken:
+      type: http
+      scheme: bearer
+      bearerFormat: VaultToken
+  parameters:
+    TenantHeader:
+      name: X-SMOS-Tenant
+      in: header
+      required: true
+      schema:
+        type: string
+      description: ID del tenant (ej. fulldaygo)
+security:
+  - vaultToken: []
+paths:
+  /tenants:
+    get:
+      tags: [tenants]
+      summary: Listar tenants (admin)
+      parameters: [ { $ref: '#/components/parameters/TenantHeader' } ]
+      responses:
+        '200': { description: OK }
+    post:
+      tags: [tenants]
+      summary: Crear tenant
+      parameters: [ { $ref: '#/components/parameters/TenantHeader' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                rut: { type: string }
+      responses:
+        '201': { description: Created }
+
+  /users:
+    get:
+      tags: [users]
+      summary: Listar usuarios del tenant
+      parameters: [ { $ref: '#/components/parameters/TenantHeader' } ]
+      responses: { '200': { description: OK } }
+
+  /messages:
+    get:
+      tags: [messages]
+      summary: Listar mensajes (agregados de Chatwoot/WhatsApp)
+      parameters: [ { $ref: '#/components/parameters/TenantHeader' } ]
+      responses: { '200': { description: OK } }
+    post:
+      tags: [messages]
+      summary: Enviar mensaje vía Chatwoot/WhatsApp
+      parameters: [ { $ref: '#/components/parameters/TenantHeader' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                to: { type: string }
+                content: { type: string }
+      responses: { '202': { description: Accepted } }
+
+  /events:
+    post:
+      tags: [events]
+      summary: Publicar evento en Redpanda
+      parameters: [ { $ref: '#/components/parameters/TenantHeader' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                topic: { type: string }
+                key: { type: string }
+                value: { type: object }
+      responses: { '202': { description: Accepted } }
+
+  /billing/usage:
+    get:
+      tags: [billing]
+      summary: Obtener uso del tenant
+      parameters: [ { $ref: '#/components/parameters/TenantHeader' } ]
+      responses: { '200': { description: OK } }
+
+  /n8n/trigger:
+    post:
+      tags: [n8n]
+      summary: Disparar workflow N8N por nombre/ID
+      parameters: [ { $ref: '#/components/parameters/TenantHeader' } ]
+      responses: { '202': { description: Accepted } }
+
+  /shopify/orders/{id}:
+    get:
+      tags: [shopify]
+      summary: Obtener orden de Shopify
+      parameters:
+        - { $ref: '#/components/parameters/TenantHeader' }
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses: { '200': { description: OK } }
+
+  /chatwoot/conversations/{id}:
+    get:
+      tags: [chatwoot]
+      summary: Obtener conversación Chatwoot
+      parameters:
+        - { $ref: '#/components/parameters/TenantHeader' }
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses: { '200': { description: OK } }
+
+  /chatwoot/messages:
+    post:
+      tags: [chatwoot]
+      summary: Enviar mensaje via Chatwoot
+      parameters: [ { $ref: '#/components/parameters/TenantHeader' } ]
+      responses: { '202': { description: Accepted } }
+
+  /whatsapp/send:
+    post:
+      tags: [whatsapp]
+      summary: Enviar WhatsApp (canal integrado a Chatwoot)
+      parameters: [ { $ref: '#/components/parameters/TenantHeader' } ]
+      responses: { '202': { description: Accepted } }
+
+  /supabase/select:
+    post:
+      tags: [supabase]
+      summary: Ejecutar consulta leída en Supabase
+      parameters: [ { $ref: '#/components/parameters/TenantHeader' } ]
+      responses: { '200': { description: OK } }
+
+  /vault/token/issue:
+    post:
+      tags: [vault]
+      summary: Emitir token efímero scoping por tenant
+      parameters: [ { $ref: '#/components/parameters/TenantHeader' } ]
+      responses: { '201': { description: Created } }
+
+  /redpanda/topics:
+    get:
+      tags: [redpanda]
+      summary: Listar topics por tenant
+      parameters: [ { $ref: '#/components/parameters/TenantHeader' } ]
+      responses: { '200': { description: OK } }

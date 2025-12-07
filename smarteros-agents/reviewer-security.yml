@@ -1,0 +1,144 @@
+# 🛡️ Reviewer Security — Spec del Agente de Seguridad y Code Review
+
+version: "1.0"
+agent:
+  name: "reviewer-security"
+  type: "security-auditor"
+  model: "claude-3-5-sonnet-20241022"
+  provider: "anthropic"
+  role: "Auditor de seguridad y calidad de código automatizado"
+
+capabilities:
+  - static_analysis
+  - vulnerability_scanning
+  - secret_detection
+  - code_style_enforcement
+  - dependency_audit
+  - compliance_checking
+
+responsibilities:
+  primary:
+    - "Analizar cada Pull Request buscando vulnerabilidades (OWASP Top 10)"
+    - "Detectar secretos hardcodeados (API keys, tokens)"
+    - "Verificar actualización de dependencias críticas"
+    - "Asegurar cumplimiento de estándares de código (linting)"
+    - "Bloquear merges peligrosos automáticamente"
+  
+  secondary:
+    - "Sugerir refactors de seguridad"
+    - "Generar reportes de cumplimiento (SOC2, GDPR basics)"
+    - "Educar a desarrolladores mediante comentarios en PRs"
+
+input:
+  sources:
+    - type: "github_pr"
+      mcp: "github"
+      events: ["opened", "synchronize"]
+    
+    - type: "git_commit"
+      mcp: "github"
+      events: ["push"]
+      branches: ["main", "develop"]
+    
+    - type: "dependency_files"
+      files: ["package.json", "go.mod", "requirements.txt", "Dockerfile"]
+    
+    - type: "security_policies"
+      path: "smarteros-specs/security/*.yml"
+
+output:
+  format: "security-audit"
+  delivery:
+    - target: "github_pr_comment"
+      mcp: "github"
+      condition: "issues_found > 0"
+    
+    - target: "github_check_run"
+      mcp: "github"
+      status: "success|failure"
+    
+    - target: "director-gemini"
+      method: "json_file"
+      path: "/tmp/smarteros/audits/sec-{pr_id}.json"
+      condition: "severity >= high"
+
+mcp_integration:
+  tier_1_analysis:
+    - name: "github"
+      use: "Leer código, diffs, comentar en PRs, bloquear merge"
+      auth: "vault:smarteros/mcp/github"
+    
+    - name: "anthropic"
+      use: "Análisis semántico de código buscando lógica insegura"
+      auth: "vault:smarteros/mcp/anthropic"
+  
+  tier_2_scanning:
+    - name: "trivy"
+      use: "Escaneo de imágenes Docker y dependencias"
+      auth: "none"
+      command: "trivy fs ."
+    
+    - name: "sonar"
+      use: "Análisis estático de calidad (opcional)"
+      auth: "vault:smarteros/mcp/sonar"
+
+decision_making:
+  strategies:
+    - name: "risk_scoring"
+      rules:
+        - "Hardcoded Secret -> Critical (Block Merge)"
+        - "SQL Injection Pattern -> Critical (Block Merge)"
+        - "Outdated Dependency (CVE > 7.0) -> High (Request Changes)"
+        - "Lint Error -> Low (Comment only)"
+    
+    - name: "auto_fix"
+      rules:
+        - "If simple lint error -> Suggest fix in comment"
+        - "If outdated minor version -> Create update PR"
+
+validation:
+  checks:
+    - check: "false_positive_check"
+      method: "llm_double_check"
+      provider: "openai" # Cross-check with different model
+    
+    - check: "policy_adherence"
+      file: "smarteros-specs/security/policy.yml"
+
+monitoring:
+  metrics:
+    - name: "vulnerabilities_found"
+      labels: ["severity", "type"]
+    - name: "pr_block_rate"
+      type: "percentage"
+    - name: "scan_duration"
+      unit: "seconds"
+
+security:
+  permissions:
+    read:
+      - "github:repo:content"
+      - "github:repo:pulls"
+    write:
+      - "github:repo:issues"
+      - "github:repo:statuses"
+      - "github:repo:comments"
+    execute:
+      - "trivy"
+      - "npm audit"
+      - "gosec"
+
+examples:
+  - scenario: "API Key Leak Detection"
+    trigger: "PR #123 contains 'sk-live-...' in config.js"
+    action:
+      1. "Detect pattern matching regex"
+      2. "Verify entropy"
+      3. "Post blocking review on PR"
+      4. "Alert Slack #security-alerts"
+      5. "Rotate key (if auto-rotation enabled)"
+
+notes: |
+  Este agente actúa como un "Senior Security Engineer".
+  Su objetivo es prevenir que código inseguro llegue a producción.
+  Debe ser ruidoso solo cuando es necesario (High Signal/Noise ratio).

@@ -1,0 +1,485 @@
+# Shopify MCP Server - SmarterOS Integration
+# Date: 2025-11-19T15:25:00Z
+# Status: inactive → requires tenant configuration
+
+name: "Shopify MCP"
+id: "shopify-mcp"
+version: "1.0.0"
+status: "inactive"  # Activates per-tenant after OAuth
+tier: "2-business"
+description: "E-commerce and product management via Shopify Admin API"
+
+# =============================================================================
+# AUTHENTICATION FLOW
+# =============================================================================
+
+auth:
+  type: "oauth2"
+  provider: "shopify"
+  scopes:
+    - "read_products"
+    - "write_products"
+    - "read_orders"
+    - "write_orders"
+    - "read_inventory"
+    - "write_inventory"
+    - "read_customers"
+    - "write_customers"
+  
+  # OAuth flow triggered from app.smarterbot.cl
+  oauth_flow:
+    step_1_user_login:
+      url: "https://app.smarterbot.cl/settings/integrations"
+      description: "User clicks 'Connect Shopify'"
+      requires: "RUT validated via Clerk"
+    
+    step_2_shopify_auth:
+      redirect_uri: "https://app.smarterbot.cl/api/auth/shopify/callback"
+      auth_url: "https://{shop}.myshopify.com/admin/oauth/authorize"
+      params:
+        client_id: "${VAULT:smarteros/mcp/shopify#client_id}"
+        scope: "read_products,write_products,read_orders"
+        redirect_uri: "https://app.smarterbot.cl/api/auth/shopify/callback"
+        state: "${tenant_id}:${session_token}"
+    
+    step_3_callback:
+      description: "Shopify redirects with code"
+      endpoint: "POST /api/auth/shopify/callback"
+      payload:
+        code: "authorization_code"
+        shop: "tenant-store.myshopify.com"
+        state: "tenant_demo_001:abc123"
+    
+    step_4_exchange_token:
+      description: "Exchange code for access_token"
+      endpoint: "POST https://{shop}.myshopify.com/admin/oauth/access_token"
+      body:
+        client_id: "${VAULT:smarteros/mcp/shopify#client_id}"
+        client_secret: "${VAULT:smarteros/mcp/shopify#client_secret}"
+        code: "auth_code_from_step_3"
+      response:
+        access_token: "shpat_xxxxxxxxxxxxx"
+        scope: "read_products,write_products"
+    
+    step_5_store_credentials:
+      description: "Save to Vault per tenant"
+      vault_path: "secret/tenant/${tenant_id}/shopify"
+      keys:
+        store_domain: "tenant-store.myshopify.com"
+        access_token: "shpat_xxxxxxxxxxxxx"
+        scopes: "read_products,write_products,read_orders"
+        connected_at: "2025-11-19T15:25:00Z"
+        status: "active"
+
+# =============================================================================
+# VAULT CONFIGURATION
+# =============================================================================
+
+vault:
+  # App-level credentials (shared)
+  app_path: "smarteros/mcp/shopify"
+  app_keys:
+    client_id: "Shopify App Client ID"
+    client_secret: "Shopify App Client Secret"
+    webhook_secret: "Shopify Webhook Signature Secret"
+  
+  # Per-tenant credentials
+  tenant_path: "secret/tenant/${tenant_id}/shopify"
+  tenant_keys:
+    store_domain: "tenant-store.myshopify.com"
+    access_token: "shpat_xxxxxxxxxxxxx"
+    scopes: "read_products,write_products,read_orders"
+    connected_at: "ISO 8601 timestamp"
+    status: "active | suspended | revoked"
+
+  # Policy for MCP access
+  policy:
+    name: "mcp-shopify-read"
+    path: "/root/specs/vault/policies/mcp-shopify-gemini-read.hcl"
+    capabilities:
+      - "read"
+      - "list"
+    agents_allowed:
+      - "gemini"
+      - "copilot"
+
+# =============================================================================
+# MCP TOOLS
+# =============================================================================
+
+tools:
+  - name: "products_list"
+    description: "List products from tenant's Shopify store"
+    input_schema:
+      type: "object"
+      properties:
+        tenant_id:
+          type: "string"
+          description: "Tenant identifier (RUT or internal ID)"
+        limit:
+          type: "integer"
+          default: 50
+          maximum: 250
+        status:
+          type: "string"
+          enum: ["active", "draft", "archived"]
+          default: "active"
+        since_id:
+          type: "string"
+          description: "For pagination"
+      required: ["tenant_id"]
+    
+    implementation:
+      method: "GET"
+      endpoint: "https://${store_domain}/admin/api/2024-10/products.json"
+      headers:
+        X-Shopify-Access-Token: "${VAULT:secret/tenant/${tenant_id}/shopify#access_token}"
+      query_params:
+        limit: "${limit}"
+        status: "${status}"
+        since_id: "${since_id}"
+    
+    output_schema:
+      type: "object"
+      properties:
+        products:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              id: "string"
+              title: "string"
+              vendor: "string"
+              product_type: "string"
+              variants: "array"
+              images: "array"
+    
+    example_response:
+      products:
+        - id: "gid://shopify/Product/7891234567890"
+          title: "Zapatilla Running Azul"
+          vendor: "Nike"
+          product_type: "Footwear"
+          variants:
+            - id: "gid://shopify/ProductVariant/123"
+              title: "Talla 42"
+              price: "39990"
+              sku: "ZAP-RUN-AZUL-42"
+              inventory_quantity: 5
+          images:
+            - src: "https://cdn.shopify.com/s/files/..."
+
+  - name: "orders_get"
+    description: "Get order details by order ID"
+    input_schema:
+      type: "object"
+      properties:
+        tenant_id:
+          type: "string"
+        order_id:
+          type: "string"
+          description: "Shopify order ID"
+      required: ["tenant_id", "order_id"]
+    
+    implementation:
+      method: "GET"
+      endpoint: "https://${store_domain}/admin/api/2024-10/orders/${order_id}.json"
+      headers:
+        X-Shopify-Access-Token: "${VAULT:secret/tenant/${tenant_id}/shopify#access_token}"
+    
+    output_schema:
+      type: "object"
+      properties:
+        order:
+          type: "object"
+          properties:
+            id: "string"
+            order_number: "integer"
+            email: "string"
+            total_price: "string"
+            currency: "string"
+            customer: "object"
+            line_items: "array"
+            financial_status: "string"
+            fulfillment_status: "string"
+
+  - name: "inventory_check"
+    description: "Check inventory availability for a product variant"
+    input_schema:
+      type: "object"
+      properties:
+        tenant_id:
+          type: "string"
+        variant_id:
+          type: "string"
+          description: "Shopify product variant ID"
+      required: ["tenant_id", "variant_id"]
+    
+    implementation:
+      method: "GET"
+      endpoint: "https://${store_domain}/admin/api/2024-10/variants/${variant_id}.json"
+      headers:
+        X-Shopify-Access-Token: "${VAULT:secret/tenant/${tenant_id}/shopify#access_token}"
+    
+    output_schema:
+      type: "object"
+      properties:
+        variant:
+          type: "object"
+          properties:
+            id: "string"
+            product_id: "string"
+            title: "string"
+            price: "string"
+            inventory_quantity: "integer"
+            inventory_management: "string"
+
+# =============================================================================
+# AGENT PERMISSIONS
+# =============================================================================
+
+agents:
+  gemini:
+    access: "full"
+    tools:
+      - "products_list"
+      - "orders_get"
+      - "inventory_check"
+    use_cases:
+      - "Customer asks for product availability"
+      - "Generate product recommendations"
+      - "Check order status"
+    vault_policy: "mcp-shopify-gemini-read"
+  
+  copilot:
+    access: "read-only"
+    tools:
+      - "products_list"
+      - "inventory_check"
+    use_cases:
+      - "Help developer understand product schema"
+      - "Generate test data"
+    vault_policy: "mcp-shopify-gemini-read"
+
+# =============================================================================
+# TENANT CONFIGURATION UI (app.smarterbot.cl)
+# =============================================================================
+
+ui_config:
+  page: "/settings/integrations"
+  section: "E-commerce"
+  
+  card:
+    title: "Shopify"
+    description: "Conecta tu tienda Shopify para automatizar ventas, inventario y atención al cliente"
+    icon: "shopify-logo.svg"
+    status_badge: "{{ tenant.shopify.status }}"  # active | inactive | error
+  
+  connect_button:
+    label: "Conectar Shopify"
+    action: "oauth_flow_start"
+    requires:
+      - rut_validated: true
+      - clerk_session: true
+    redirect_to: "https://{shop}.myshopify.com/admin/oauth/authorize"
+  
+  disconnect_button:
+    label: "Desconectar"
+    action: "revoke_oauth_token"
+    confirm: "¿Seguro que deseas desconectar tu tienda Shopify?"
+  
+  settings_panel:
+    fields:
+      - name: "store_domain"
+        label: "Dominio de tienda"
+        type: "text"
+        readonly: true
+        value: "{{ tenant.shopify.store_domain }}"
+      
+      - name: "connected_at"
+        label: "Conectado el"
+        type: "datetime"
+        readonly: true
+        value: "{{ tenant.shopify.connected_at }}"
+      
+      - name: "webhooks_enabled"
+        label: "Webhooks activos"
+        type: "toggle"
+        default: true
+        description: "Recibir eventos de órdenes, productos e inventario"
+      
+      - name: "sync_products"
+        label: "Sincronizar productos ahora"
+        type: "button"
+        action: "trigger_product_sync"
+
+# =============================================================================
+# WEBHOOKS CONFIGURATION
+# =============================================================================
+
+webhooks:
+  base_url: "https://n8n.smarterbot.cl/webhook/shopify"
+  signature_validation: true
+  signature_header: "X-Shopify-Hmac-Sha256"
+  secret_path: "${VAULT:smarteros/mcp/shopify#webhook_secret}"
+  
+  events:
+    - topic: "orders/create"
+      endpoint: "/webhook/shopify/orders/create"
+      format: "json"
+      description: "New order created"
+    
+    - topic: "orders/paid"
+      endpoint: "/webhook/shopify/orders/paid"
+      format: "json"
+      description: "Order payment confirmed"
+    
+    - topic: "products/update"
+      endpoint: "/webhook/shopify/products/update"
+      format: "json"
+      description: "Product data updated"
+    
+    - topic: "inventory_levels/update"
+      endpoint: "/webhook/shopify/inventory/update"
+      format: "json"
+      description: "Inventory quantity changed"
+
+# =============================================================================
+# PROTOBUF DEFINITION
+# =============================================================================
+
+protobuf:
+  path: "/root/specs/specs/proto/smarteros/v1/shopify.proto"
+  service: "ShopifyService"
+  rpcs:
+    - "GetProduct"
+    - "UpdateInventory"
+    - "CreateOrder"
+    - "ProcessWebhook"
+    - "SyncProducts"
+
+# =============================================================================
+# DEPLOYMENT & DEPENDENCIES
+# =============================================================================
+
+dependencies:
+  services:
+    - name: "Vault"
+      url: "https://mainkey.smarterbot.cl"
+      required: true
+    
+    - name: "Clerk"
+      url: "https://api.clerk.com"
+      required: true
+      purpose: "User authentication and RUT validation"
+    
+    - name: "n8n"
+      url: "https://n8n.smarterbot.cl"
+      required: true
+      purpose: "Webhook processing"
+  
+  credentials:
+    - path: "smarteros/mcp/shopify"
+      keys:
+        - "client_id"
+        - "client_secret"
+        - "webhook_secret"
+
+# =============================================================================
+# MONITORING & HEALTH
+# =============================================================================
+
+health:
+  endpoint: "https://app.smarterbot.cl/api/health/shopify"
+  checks:
+    - name: "vault_accessible"
+      description: "Can read from Vault"
+      critical: true
+    
+    - name: "shopify_api_reachable"
+      description: "Shopify Admin API responds"
+      critical: true
+    
+    - name: "active_tenants"
+      description: "Count of tenants with Shopify connected"
+      critical: false
+
+metrics:
+  - name: "shopify_api_requests"
+    type: "counter"
+    labels: ["tenant_id", "tool_name", "status"]
+  
+  - name: "shopify_api_latency"
+    type: "histogram"
+    labels: ["tenant_id", "tool_name"]
+  
+  - name: "shopify_webhooks_received"
+    type: "counter"
+    labels: ["tenant_id", "topic", "status"]
+
+# =============================================================================
+# DOCUMENTATION
+# =============================================================================
+
+documentation:
+  user_guide: "/docs/integrations/shopify"
+  api_reference: "https://shopify.dev/docs/api/admin-rest"
+  setup_video: "https://www.youtube.com/watch?v=..."
+  support_email: "smarterbotcl@gmail.com"
+
+# =============================================================================
+# ROADMAP
+# =============================================================================
+
+roadmap:
+  current:
+    - "OAuth 2.0 authentication ✅"
+    - "Basic product/order/inventory tools ✅"
+    - "Webhook configuration ✅"
+  
+  next_quarter:
+    - "Advanced product search with filters"
+    - "Create/update products via MCP"
+    - "Customer management tools"
+    - "Multi-location inventory support"
+  
+  future:
+    - "Shopify Flow integration"
+    - "Metafield read/write"
+    - "GraphQL API support"
+    - "App extensions"
+
+# =============================================================================
+# SECURITY
+# =============================================================================
+
+security:
+  token_storage: "Vault KV v2 (encrypted at rest)"
+  token_rotation: "Manual via UI (OAuth refresh not supported by Shopify)"
+  token_revocation: "Via Shopify admin panel or API"
+  rate_limiting: "2 requests/second per tenant (Shopify limit)"
+  
+  compliance:
+    - "GDPR compliant (EU customer data)"
+    - "PCI DSS (no card data stored)"
+    - "SOC 2 Type II (in progress)"
+
+# =============================================================================
+# PRICING & LIMITS
+# =============================================================================
+
+limits:
+  free_tier:
+    enabled: false
+  
+  professional_tier:
+    enabled: true
+    stores: 1
+    api_calls_per_day: 10000
+    webhooks: "unlimited"
+  
+  enterprise_tier:
+    enabled: true
+    stores: "unlimited"
+    api_calls_per_day: "unlimited"
+    dedicated_support: true

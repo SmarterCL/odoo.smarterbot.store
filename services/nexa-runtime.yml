@@ -1,0 +1,139 @@
+# smarteros-specs/services/nexa-runtime.yml
+apiVersion: smarteros/v1
+kind: Service
+metadata:
+  name: nexa-runtime
+  displayName: Nexa Runtime
+  description: >
+    Motor de IA local multi-tenant basado en Nexa SDK.
+    Expone una API tipo OpenAI para agentes, n8n y Botpress dentro de SmarterOS.
+  tags:
+    - ai
+    - nexa
+    - runtime
+    - mcp
+spec:
+  category: ai-runtime
+  tenantMode: multi-tenant
+
+  ingress:
+    enabled: true
+    host: ai.smarterbot.store
+    path: /
+    protocol: https
+
+  runtime:
+    type: docker
+    serviceName: nexa-runtime
+    containerPort: 8080
+    healthcheck:
+      path: /health
+      intervalSeconds: 10
+      timeoutSeconds: 3
+      retries: 5
+
+  network:
+    internalName: smarter-net
+    exposeInternallyAs: http://nexa-runtime:8080
+
+  dependencies:
+    - name: vault
+      required: true
+    - name: n8n
+      required: false
+    - name: botpress
+      required: false
+    - name: supabase
+      required: false
+
+  config:
+    model:
+      defaultId: llama-3-8b-instruct
+      storePath: /var/lib/nexa/models
+      maxContextTokens: 8192
+      maxOutputTokens: 1024
+    security:
+      vaultPathTemplate: secret/data/tenant/{{tenant_id}}/nexa
+    limits:
+      maxRequestsPerMinutePerTenant: 120
+      maxConcurrentRequestsPerTenant: 4
+
+  interfaces:
+    - name: openai-compatible
+      type: http
+      basePath: /v1
+      description: >
+        API compatible con OpenAI (chat/completions/embeddings) sobre Nexa SDK.
+    - name: admin
+      type: http
+      basePath: /admin
+      description: >
+        Endpoints internos para precarga/descarga de modelos y métricas.
+
+  mcp:
+    tools:
+      - name: nexa.chat
+        description: Chat completions en Nexa (OpenAI-like).
+        endpoint: /v1/chat/completions
+      - name: nexa.embeddings
+        description: Generación de embeddings para RAG en Supabase.
+        endpoint: /v1/embeddings
+
+  deployment:
+    current:
+      url: https://ai.smarterbot.store
+      port: 8000
+      status: active
+      version: nexa-sdk-latest
+    
+  vault:
+    policies:
+      - name: smarteros-nexa
+        path: policies/smarteros-nexa.hcl
+    
+    tenant_structure:
+      path_template: secret/data/tenant/{{tenant_id}}/nexa
+      example:
+        tenant_id: rut-76832940-3
+        secrets:
+          NEXA_MODEL_ID: llama-3-8b-instruct
+          NEXA_MODEL_VARIANT: q4_k_m
+          NEXA_MAX_CONTEXT_TOKENS: "8192"
+          NEXA_MAX_OUTPUT_TOKENS: "768"
+          NEXA_TEMPERATURE: "0.7"
+          TENANT_HARD_LIMIT_RPM: "120"
+          TENANT_HARD_LIMIT_CONCURRENCY: "4"
+
+  integrations:
+    n8n:
+      endpoint: http://nexa-runtime:8080/v1/chat/completions
+      auth: header
+      header_name: X-Tenant-Id
+      example: |
+        POST /v1/chat/completions
+        Headers:
+          X-Tenant-Id: rut-76832940-3
+          Content-Type: application/json
+        Body:
+          {
+            "model": "llama-3-8b-instruct",
+            "messages": [{"role": "user", "content": "Hola"}]
+          }
+    
+    botpress:
+      provider_type: openai-compatible
+      base_url: http://nexa-runtime:8080/v1
+      model: llama-3-8b-instruct
+    
+    chatwoot:
+      flow: chatwoot → webhook → n8n → nexa → response
+      
+  monitoring:
+    metrics:
+      - requests_per_tenant
+      - tokens_used_per_tenant
+      - model_load_time
+      - inference_latency
+    logging:
+      destination: supabase
+      table: ai_runtime_logs

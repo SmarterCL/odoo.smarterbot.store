@@ -1,0 +1,1070 @@
+# 🔐 Clerk MCP Tools — Authentication & User Management
+
+version: "1.0.0"
+source: "official"
+repository: "https://github.com/clerk/mcp-tools"
+updated: "2025-11-16"
+
+metadata:
+  name: "Clerk MCP Tools"
+  category: "authentication"
+  tier: 1
+  provider: "clerk"
+  app: "authentication"
+  deployment: "integrated"
+  description: "Authentication provider with Google OAuth, user management, and session validation"
+
+description: |
+  Servidor MCP oficial de Clerk para autenticación y gestión de usuarios.
+  
+  Permite:
+  - Autenticación Google OAuth
+  - Gestión de usuarios (CRUD)
+  - Validación de sesiones y tokens
+  - Configuración de providers OAuth
+  - Sincronización con bases de datos
+  - Multi-tenant user management
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Authentication Configuration
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+authentication:
+  methods:
+    - oauth:
+        description: "OAuth 2.0 authentication flow"
+        flow: "authorization_code"
+        providers:
+          - google:
+              enabled: true
+              scopes:
+                - "openid"
+                - "profile"
+                - "email"
+              localization: "es-CL"
+          
+          - facebook:
+              enabled: false
+          
+          - github:
+              enabled: false
+    
+    - api_key:
+        description: "Clerk API key for server-side operations"
+        required: true
+        setup: |
+          1. Go to Clerk Dashboard → API Keys
+          2. Copy Publishable Key (pk_test_...)
+          3. Copy Secret Key (sk_test_...)
+          4. Generate JWT Template key (optional)
+        
+        configuration:
+          vault_path: "smarteros/mcp/clerk"
+          vault_keys:
+            - clerk_publishable_key
+            - clerk_secret_key
+            - clerk_jwt_key
+            - clerk_webhook_secret
+
+  vault:
+    path: "smarteros/mcp/clerk"
+    policy: "mcp-clerk-read"
+    policy_file: "vault/policies/mcp-clerk-read.hcl"
+    
+    keys:
+      clerk_publishable_key:
+        description: "Clerk publishable key (pk_test_...)"
+        required: true
+        usage: "Client-side authentication, public"
+      
+      clerk_secret_key:
+        description: "Clerk secret key (sk_test_...)"
+        required: true
+        usage: "Server-side API calls, private"
+      
+      clerk_jwt_key:
+        description: "JWT signing key for custom tokens"
+        required: false
+        usage: "Custom JWT validation"
+      
+      clerk_webhook_secret:
+        description: "Webhook secret for event verification"
+        required: false
+        usage: "Verify Clerk webhook signatures"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Tools / Capabilities
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+tools:
+  users:
+    - name: "clerk_users_list"
+      description: "List all users in organization"
+      category: "users"
+      
+      parameters:
+        limit:
+          type: "integer"
+          description: "Number of users to return"
+          default: 10
+          max: 100
+        
+        offset:
+          type: "integer"
+          description: "Number of users to skip"
+          default: 0
+        
+        order_by:
+          type: "string"
+          description: "Sort order"
+          enum: ["+created_at", "-created_at", "+email_address", "-email_address"]
+          default: "-created_at"
+      
+      response:
+        users: "Array of user objects"
+        total_count: "Total number of users"
+      
+      rate_limit: "100 requests per minute"
+      
+      example: |
+        {
+          "tool": "clerk_users_list",
+          "arguments": {
+            "limit": 20,
+            "offset": 0,
+            "order_by": "-created_at"
+          }
+        }
+    
+    - name: "clerk_user_get"
+      description: "Get single user by ID"
+      category: "users"
+      
+      parameters:
+        user_id:
+          type: "string"
+          description: "Clerk user ID (user_xxxxx)"
+          required: true
+      
+      response:
+        user: "Complete user object with metadata"
+      
+      rate_limit: "100 requests per minute"
+      
+      example: |
+        {
+          "tool": "clerk_user_get",
+          "arguments": {
+            "user_id": "user_2abc123xyz"
+          }
+        }
+    
+    - name: "clerk_user_create"
+      description: "Create new user with OAuth metadata"
+      category: "users"
+      
+      parameters:
+        email_address:
+          type: "string"
+          description: "User email address"
+          required: true
+        
+        first_name:
+          type: "string"
+          description: "User first name"
+          required: false
+        
+        last_name:
+          type: "string"
+          description: "User last name"
+          required: false
+        
+        external_id:
+          type: "string"
+          description: "External system user ID (e.g., Supabase UUID)"
+          required: false
+        
+        public_metadata:
+          type: "object"
+          description: "Public metadata (visible to frontend)"
+          required: false
+          example:
+            country: "CL"
+            locale: "es-CL"
+            tenant_id: "tenant-uuid"
+        
+        private_metadata:
+          type: "object"
+          description: "Private metadata (server-side only)"
+          required: false
+          example:
+            shopify_connected: false
+            demo_mode: false
+      
+      response:
+        user: "Created user object with Clerk ID"
+      
+      rate_limit: "20 requests per minute"
+      
+      example: |
+        {
+          "tool": "clerk_user_create",
+          "arguments": {
+            "email_address": "usuario@example.cl",
+            "first_name": "Juan",
+            "last_name": "Pérez",
+            "public_metadata": {
+              "country": "CL",
+              "locale": "es-CL"
+            },
+            "private_metadata": {
+              "shopify_connected": false
+            }
+          }
+        }
+    
+    - name: "clerk_user_update"
+      description: "Update existing user metadata"
+      category: "users"
+      
+      parameters:
+        user_id:
+          type: "string"
+          description: "Clerk user ID"
+          required: true
+        
+        first_name:
+          type: "string"
+          required: false
+        
+        last_name:
+          type: "string"
+          required: false
+        
+        public_metadata:
+          type: "object"
+          description: "Merge with existing public metadata"
+          required: false
+        
+        private_metadata:
+          type: "object"
+          description: "Merge with existing private metadata"
+          required: false
+      
+      response:
+        user: "Updated user object"
+      
+      rate_limit: "20 requests per minute"
+      
+      example: |
+        {
+          "tool": "clerk_user_update",
+          "arguments": {
+            "user_id": "user_2abc123xyz",
+            "private_metadata": {
+              "shopify_connected": true,
+              "shopify_shop": "mi-tienda.myshopify.com"
+            }
+          }
+        }
+  
+  oauth:
+    - name: "clerk_oauth_providers"
+      description: "List and configure OAuth providers"
+      category: "oauth"
+      
+      parameters:
+        action:
+          type: "string"
+          enum: ["list", "enable", "disable"]
+          required: true
+        
+        provider:
+          type: "string"
+          enum: ["google", "facebook", "github", "microsoft"]
+          required_for: ["enable", "disable"]
+      
+      response:
+        providers: "Array of OAuth provider configurations"
+      
+      rate_limit: "10 requests per minute"
+      
+      example: |
+        {
+          "tool": "clerk_oauth_providers",
+          "arguments": {
+            "action": "list"
+          }
+        }
+  
+  sessions:
+    - name: "clerk_session_validate"
+      description: "Validate JWT session token"
+      category: "sessions"
+      
+      parameters:
+        session_token:
+          type: "string"
+          description: "JWT session token from client"
+          required: true
+        
+        verify_signature:
+          type: "boolean"
+          description: "Verify JWT signature"
+          default: true
+      
+      response:
+        valid: "boolean"
+        user_id: "Clerk user ID if valid"
+        session_id: "Session ID if valid"
+        expires_at: "Token expiration timestamp"
+        claims: "JWT claims object"
+      
+      rate_limit: "100 requests per minute"
+      
+      example: |
+        {
+          "tool": "clerk_session_validate",
+          "arguments": {
+            "session_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+            "verify_signature": true
+          }
+        }
+    
+    - name: "clerk_tokens_validate"
+      description: "Validate OAuth access tokens"
+      category: "sessions"
+      
+      parameters:
+        access_token:
+          type: "string"
+          description: "OAuth access token"
+          required: true
+        
+        token_type:
+          type: "string"
+          enum: ["oauth_token", "session_token"]
+          default: "oauth_token"
+      
+      response:
+        valid: "boolean"
+        user_id: "User ID if valid"
+        client_id: "OAuth client ID"
+        scopes: "Array of granted scopes"
+      
+      rate_limit: "100 requests per minute"
+      
+      example: |
+        {
+          "tool": "clerk_tokens_validate",
+          "arguments": {
+            "access_token": "oauth_token_xxxxx",
+            "token_type": "oauth_token"
+          }
+        }
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Agent Assignments
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+agents:
+  primary_agent: "director-gemini"
+  secondary_agents: ["writer-copilot", "executor-codex"]
+  
+  capabilities:
+    gemini:
+      description: "Orchestrates authentication flows and user onboarding"
+      tools:
+        - "clerk_users_list"
+        - "clerk_user_get"
+        - "clerk_session_validate"
+        - "clerk_oauth_providers"
+      
+      use_cases:
+        - "User onboarding flow orchestration"
+        - "Session validation and renewal"
+        - "OAuth provider configuration"
+        - "User lifecycle management"
+    
+    copilot:
+      description: "Generates authentication code and documentation"
+      tools:
+        - "clerk_user_get"
+        - "clerk_oauth_providers"
+      
+      use_cases:
+        - "Generate Clerk middleware code"
+        - "Create authentication components"
+        - "Document OAuth flows"
+        - "Write user management utilities"
+    
+    codex:
+      description: "Database sync and session validation"
+      tools:
+        - "clerk_user_create"
+        - "clerk_user_update"
+        - "clerk_session_validate"
+        - "clerk_tokens_validate"
+      
+      use_cases:
+        - "Sync Clerk users to Supabase"
+        - "Validate tokens in API routes"
+        - "Update user metadata on events"
+        - "Batch user operations"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Integration with SmarterOS
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+integration:
+  supabase_sync:
+    description: "Sync Clerk users to Supabase database"
+    
+    flow: |
+      1. User completes Google OAuth in Clerk
+      2. Clerk webhook fires user.created event
+      3. director-gemini receives event via MCP
+      4. executor-codex creates Supabase user record:
+         - users table: id (clerk_id), email, google_id, photo_url
+         - tenants table: user_id, shopify_connected=false
+      5. Store tenant_id in Clerk private_metadata
+    
+    tables:
+      users:
+        id: "TEXT PRIMARY KEY (Clerk user_id)"
+        email: "TEXT UNIQUE NOT NULL"
+        google_id: "TEXT UNIQUE (from Clerk external_accounts)"
+        photo_url: "TEXT"
+        first_name: "TEXT"
+        last_name: "TEXT"
+        country: "TEXT DEFAULT 'CL'"
+        locale: "TEXT DEFAULT 'es-CL'"
+        auth_provider: "TEXT DEFAULT 'google'"
+        verified: "BOOLEAN"
+        created_at: "TIMESTAMPTZ DEFAULT NOW()"
+        updated_at: "TIMESTAMPTZ DEFAULT NOW()"
+      
+      tenants:
+        id: "UUID PRIMARY KEY DEFAULT gen_random_uuid()"
+        user_id: "TEXT REFERENCES users(id)"
+        shopify_connected: "BOOLEAN DEFAULT false"
+        shopify_shop_domain: "TEXT"
+        demo_mode: "BOOLEAN DEFAULT false"
+        created_at: "TIMESTAMPTZ"
+        updated_at: "TIMESTAMPTZ"
+    
+    webhook_events:
+      - "user.created"
+      - "user.updated"
+      - "user.deleted"
+      - "session.created"
+      - "session.revoked"
+  
+  google_oauth:
+    description: "Google Sign-In configuration"
+    
+    setup: |
+      1. Clerk Dashboard → Social Connections
+      2. Enable Google OAuth
+      3. Configure OAuth consent screen (es-CL)
+      4. Add authorized redirect URIs:
+         - https://fulldaygo.smarterbot.cl/sign-in
+         - https://fulldaygo.smarterbot.cl/sign-up
+         - https://demo.smarterbot.cl/sign-in
+      5. Set appearance locale to es-CL
+    
+    scopes:
+      - "openid"
+      - "profile"
+      - "email"
+    
+    user_metadata:
+      public:
+        - "email"
+        - "first_name"
+        - "last_name"
+        - "photo_url"
+        - "country"
+        - "locale"
+      
+      private:
+        - "google_id"
+        - "tenant_id"
+        - "shopify_connected"
+        - "shopify_shop_domain"
+        - "demo_mode"
+  
+  shopify_gate:
+    description: "Product display gating based on Shopify connection"
+    
+    logic: |
+      1. User authenticates via Google OAuth
+      2. Check Clerk private_metadata.shopify_connected
+      3. IF false:
+         - Redirect to /connect/shopify
+         - Show "Conecta tu tienda" message
+         - Display demo products (fake data)
+      4. IF true:
+         - Load real products from Supabase
+         - Products synced via N8N every 3 minutes
+         - Show full marketplace functionality
+    
+    workflow:
+      - tool: "clerk_user_get"
+        extract: "private_metadata.shopify_connected"
+      
+      - condition: "shopify_connected === false"
+        action: "redirect_to_shopify_connect"
+      
+      - condition: "shopify_connected === true"
+        action: "load_real_products"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Localization (es-CL)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+localization:
+  locale: "es-CL"
+  language: "es"
+  country: "CL"
+  currency: "CLP"
+  timezone: "America/Santiago"
+  
+  clerk_strings:
+    sign_in:
+      title: "Iniciar sesión"
+      google_button: "Continuar con Google"
+      email_label: "Correo electrónico"
+      password_label: "Contraseña"
+      forgot_password: "¿Olvidaste tu contraseña?"
+    
+    sign_up:
+      title: "Crear cuenta"
+      google_button: "Registrarse con Google"
+      terms: "Al registrarte aceptas nuestros Términos y Condiciones"
+    
+    user_button:
+      sign_out: "Cerrar sesión"
+      manage_account: "Administrar cuenta"
+    
+    errors:
+      invalid_email: "Correo electrónico inválido"
+      user_not_found: "Usuario no encontrado"
+      wrong_password: "Contraseña incorrecta"
+      session_expired: "Sesión expirada. Por favor inicia sesión nuevamente."
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Use Cases
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+use_cases:
+  google_oauth_login:
+    description: "Usuario inicia sesión con Google OAuth"
+    
+    flow:
+      1_frontend:
+        component: "SignIn from @clerk/nextjs"
+        action: "User clicks 'Continuar con Google'"
+        redirect: "Clerk OAuth flow"
+      
+      2_clerk:
+        action: "User authorizes Google access"
+        returns: "JWT session token"
+        webhook: "user.created or session.created"
+      
+      3_mcp_sync:
+        agent: "director-gemini"
+        tool: "clerk_user_get"
+        extract: "email, google_id, photo_url, first_name, last_name"
+      
+      4_database:
+        agent: "executor-codex"
+        action: "Upsert to Supabase users and tenants tables"
+        metadata: "Store tenant_id in Clerk private_metadata"
+      
+      5_redirect:
+        condition: "shopify_connected === false"
+        destination: "/connect/shopify"
+        alternative: "/dashboard"
+  
+  user_metadata_update:
+    description: "Actualizar metadata cuando usuario conecta Shopify"
+    
+    flow:
+      1_shopify_oauth:
+        action: "User completes Shopify OAuth"
+        receives: "access_token, shop_domain"
+      
+      2_store_tokens:
+        table: "shopify_access_tokens"
+        fields: "tenant_id, access_token (encrypted), shop_domain"
+      
+      3_update_clerk:
+        agent: "executor-codex"
+        tool: "clerk_user_update"
+        update:
+          private_metadata:
+            shopify_connected: true
+            shopify_shop_domain: "mi-tienda.myshopify.com"
+      
+      4_trigger_sync:
+        service: "N8N"
+        webhook: "/shopify-sync"
+        payload: "tenant_id, shop_domain"
+        frequency: "Every 3 minutes"
+  
+  session_validation:
+    description: "Validar sesión en API routes protegidas"
+    
+    flow:
+      1_extract_token:
+        source: "req.headers.authorization"
+        format: "Bearer <session_token>"
+      
+      2_validate:
+        agent: "executor-codex"
+        tool: "clerk_session_validate"
+        parameters:
+          session_token: "extracted_token"
+          verify_signature: true
+      
+      3_response:
+        valid_true:
+          action: "Proceed with API request"
+          attach: "user_id to req.auth"
+        
+        valid_false:
+          status: 401
+          message: "Unauthorized - Invalid session"
+  
+  demo_mode_isolation:
+    description: "Aislar demo.smarterbot.cl con datos fake"
+    
+    setup:
+      1_separate_clerk:
+        publishable_key: "pk_demo_..."
+        secret_key: "sk_demo_..."
+        environment: "development"
+      
+      2_database_schema:
+        schema: "demo"
+        tables: "demo.users, demo.tenants, demo.products"
+      
+      3_environment:
+        NEXT_PUBLIC_DEMO_MODE: "true"
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_demo_..."
+      
+      4_metadata:
+        private_metadata:
+          demo_mode: true
+          shopify_connected: true (fake)
+          shopify_shop_domain: "demo.myshopify.com"
+      
+      5_products:
+        source: "Fake data in demo.products"
+        quantity: "20 productos demo"
+        realistic: true
+        note: "No redirects to smarterbot.store"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Rate Limits
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+rate_limits:
+  clerk_api:
+    free_tier:
+      requests: "20,000 per month"
+      monthly_active_users: "10,000 MAU"
+    
+    pro_tier:
+      requests: "Unlimited"
+      monthly_active_users: "$0.02 per MAU after 10k"
+  
+  per_tool:
+    users_list: "100 req/min"
+    user_get: "100 req/min"
+    user_create: "20 req/min"
+    user_update: "20 req/min"
+    session_validate: "100 req/min"
+    tokens_validate: "100 req/min"
+    oauth_providers: "10 req/min"
+  
+  best_practices:
+    - "Cache user data in Redis (TTL 5 minutes)"
+    - "Batch user operations when possible"
+    - "Use webhooks instead of polling"
+    - "Validate sessions client-side first (JWT decode)"
+    - "Only call API for signature verification"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# SDK & Implementation
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+sdk:
+  nextjs:
+    package: "@clerk/nextjs"
+    version: "^6.0.0"
+    
+    installation: |
+      npm install @clerk/nextjs
+      # or
+      pnpm add @clerk/nextjs
+    
+    basic_setup: |
+      // app/layout.tsx
+      import { ClerkProvider } from '@clerk/nextjs'
+      import { esES } from '@clerk/localizations'
+      
+      export default function RootLayout({ children }) {
+        return (
+          <ClerkProvider
+            localization={esES}
+            appearance={{
+              variables: {
+                colorPrimary: '#0070f3'
+              }
+            }}
+          >
+            <html lang="es-CL">
+              <body>{children}</body>
+            </html>
+          </ClerkProvider>
+        )
+      }
+    
+    middleware: |
+      // middleware.ts
+      import { authMiddleware } from "@clerk/nextjs"
+      
+      export default authMiddleware({
+        publicRoutes: ["/", "/sign-in", "/sign-up"],
+        async afterAuth(auth, req) {
+          if (auth.userId && auth.isSignedIn) {
+            // Sync to Supabase via MCP
+            await syncUserToSupabase(auth.user)
+          }
+        }
+      })
+      
+      export const config = {
+        matcher: ["/((?!.*\\..*|_next).*)", "/", "/(api|trpc)(.*)"]
+      }
+    
+    components: |
+      // app/sign-in/[[...sign-in]]/page.tsx
+      import { SignIn } from "@clerk/nextjs"
+      
+      export default function Page() {
+        return (
+          <div className="flex min-h-screen items-center justify-center">
+            <SignIn
+              appearance={{
+                elements: {
+                  rootBox: "mx-auto",
+                  card: "shadow-2xl"
+                }
+              }}
+              path="/sign-in"
+              routing="path"
+              signUpUrl="/sign-up"
+              afterSignInUrl="/dashboard"
+            />
+          </div>
+        )
+      }
+  
+  mcp_client:
+    package: "@clerk/mcp-tools"
+    version: "^1.0.0"
+    
+    installation: |
+      npm install @clerk/mcp-tools
+      npm install @modelcontextprotocol/sdk
+    
+    usage: |
+      import { 
+        createMcpHandler,
+        experimental_withMcpAuth as withMcpAuth 
+      } from '@vercel/mcp-adapter'
+      import { verifyClerkToken } from '@clerk/mcp-tools/next'
+      import { auth } from '@clerk/nextjs/server'
+      
+      const handler = createMcpHandler((server) => {
+        server.tool(
+          'get-user-data',
+          'Get authenticated user data',
+          {},
+          async (_, { authInfo }) => {
+            const userId = authInfo!.extra!.userId! as string
+            // Use clerk_user_get MCP tool here
+          }
+        )
+      })
+      
+      const authHandler = withMcpAuth(
+        handler,
+        async (_, token) => {
+          const clerkAuth = await auth({ acceptsToken: 'oauth_token' })
+          return verifyClerkToken(clerkAuth, token)
+        },
+        { required: true }
+      )
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Testing
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+testing:
+  development:
+    clerk_dashboard: "https://dashboard.clerk.com"
+    test_users: "Create test users with +tags in email"
+    example: "user+test1@smarterbot.cl"
+  
+  mcp_tools:
+    users_list: |
+      curl https://mcp.smarterbot.cl/clerk/users/list \
+        -H "Authorization: Bearer $CLERK_SECRET_KEY"
+    
+    user_create: |
+      curl -X POST https://mcp.smarterbot.cl/clerk/users \
+        -H "Authorization: Bearer $CLERK_SECRET_KEY" \
+        -d '{
+          "email_address": "test@smarterbot.cl",
+          "first_name": "Test",
+          "public_metadata": {"country": "CL", "locale": "es-CL"}
+        }'
+  
+  webhooks:
+    local_testing: "Use ngrok or Clerk CLI webhook forwarding"
+    verify_signature: "Always verify webhook signatures in production"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Security
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+security:
+  best_practices:
+    - "Store Clerk keys in Vault, never in git"
+    - "Use separate keys for dev/staging/production"
+    - "Enable MFA for admin accounts"
+    - "Verify webhook signatures"
+    - "Use HTTPS only for production"
+    - "Implement rate limiting on auth endpoints"
+    - "Log authentication events for audit"
+    - "Encrypt sensitive user metadata"
+    - "Use short-lived session tokens (1 hour)"
+    - "Implement session refresh flow"
+  
+  vault_policy: |
+    # vault/policies/mcp-clerk-read.hcl
+    path "smarteros/mcp/clerk" {
+      capabilities = ["read", "list"]
+    }
+    
+    path "smarteros/mcp/" {
+      capabilities = ["list"]
+    }
+  
+  oauth_security:
+    - "Use state parameter for CSRF protection"
+    - "Validate redirect_uri matches registered URIs"
+    - "Use PKCE for public clients"
+    - "Implement token rotation"
+    - "Revoke tokens on logout"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Monitoring & Analytics
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+monitoring:
+  clerk_dashboard:
+    metrics:
+      - "Monthly Active Users (MAU)"
+      - "Sign-ins per day"
+      - "OAuth provider breakdown"
+      - "Session duration"
+      - "Failed authentication attempts"
+    
+    alerts:
+      - "Unusual spike in failed logins"
+      - "High API error rate"
+      - "Approaching rate limits"
+  
+  custom_metrics:
+    - name: "shopify_connection_rate"
+      description: "% of users who connect Shopify"
+      calculation: "users with shopify_connected=true / total users"
+    
+    - name: "google_oauth_conversion"
+      description: "% of users who complete Google OAuth"
+      calculation: "users with google_id / total sign-up starts"
+    
+    - name: "session_validation_latency"
+      description: "Time to validate session token"
+      target: "< 100ms p95"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Related MCPs & Integrations
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+related_mcps:
+  - "supabase" # Database sync target
+  - "n8n" # Webhook automation
+  - "metabase" # User analytics
+  - "smartermcp" # Service orchestration
+
+integrations:
+  supabase:
+    purpose: "User data persistence"
+    sync: "Real-time via webhooks"
+    tables: ["users", "tenants", "shopify_access_tokens"]
+  
+  shopify:
+    purpose: "Store connection and product sync"
+    oauth_flow: "Via /connect/shopify endpoint"
+    gate: "Products only visible if shopify_connected=true"
+  
+  n8n:
+    purpose: "Workflow automation"
+    webhooks:
+      - "user.created → sync to Supabase"
+      - "user.updated → update tenant metadata"
+      - "shopify.connected → trigger product sync"
+  
+  vercel:
+    purpose: "Edge middleware deployment"
+    features:
+      - "authMiddleware at edge runtime"
+      - "Session validation without cold starts"
+      - "Fast OAuth redirects"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Documentation & Resources
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+documentation:
+  official:
+    - "https://clerk.com/docs"
+    - "https://github.com/clerk/mcp-tools"
+    - "https://clerk.com/docs/quickstarts/nextjs"
+  
+  mcp_specific:
+    - "https://github.com/clerk/mcp-tools/blob/main/README.md"
+    - "https://github.com/clerk/mcp-tools/blob/main/next/README.md"
+  
+  internal:
+    - "smarteros-specs/docs/CLERK-INTEGRATION.md"
+    - "smarteros-specs/docs/AUTH-FLOW.md"
+    - "smarteros-specs/docs/SUPABASE-SYNC.md"
+
+examples:
+  repositories:
+    - "https://github.com/clerk/clerk-nextjs-app-router-demo"
+    - "https://github.com/clerk/mcp-tools/tree/main/examples"
+  
+  smarteros:
+    - "front/fulldaygo.smarterbot.cl (production auth)"
+    - "front/demo.smarterbot.cl (demo environment)"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Deployment Checklist
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+deployment:
+  prerequisites:
+    - "Clerk account created"
+    - "Google OAuth configured in Clerk Dashboard"
+    - "Supabase database tables created"
+    - "Vault keys configured"
+    - "Webhooks configured"
+  
+  steps:
+    1_clerk_setup:
+      - "Create Clerk application"
+      - "Enable Google OAuth provider"
+      - "Configure es-CL localization"
+      - "Add redirect URIs (fulldaygo, demo)"
+      - "Generate API keys"
+    
+    2_vault_storage:
+      - "Store clerk_publishable_key in Vault"
+      - "Store clerk_secret_key in Vault"
+      - "Apply mcp-clerk-read policy"
+    
+    3_nextjs_integration:
+      - "Install @clerk/nextjs package"
+      - "Configure ClerkProvider with es-CL"
+      - "Add middleware.ts for auth"
+      - "Create sign-in and sign-up pages"
+    
+    4_database_schema:
+      - "Create users table in Supabase"
+      - "Create tenants table in Supabase"
+      - "Create shopify_access_tokens table"
+      - "Set up RLS policies"
+    
+    5_webhook_setup:
+      - "Configure webhook endpoint in Clerk"
+      - "Add webhook secret to Vault"
+      - "Implement webhook handler in Next.js"
+      - "Test user.created event"
+    
+    6_testing:
+      - "Test Google OAuth flow"
+      - "Verify Supabase sync"
+      - "Test session validation"
+      - "Test Shopify gate logic"
+    
+    7_production:
+      - "Switch to production Clerk keys"
+      - "Enable rate limiting"
+      - "Configure monitoring alerts"
+      - "Deploy to Vercel"
+
+notes: |
+  Clerk MCP Tools integration para SmarterOS:
+  
+  Objetivo: Autenticación unificada con Google OAuth, sincronización
+  automática a Supabase, y gate de productos por conexión Shopify.
+  
+  Flujo completo:
+  1. Usuario visita fulldaygo.smarterbot.cl
+  2. Click "Continuar con Google"
+  3. Clerk maneja OAuth y retorna JWT
+  4. director-gemini (MCP) lee user data de Clerk
+  5. executor-codex (MCP) sincroniza a Supabase users/tenants
+  6. Si shopify_connected=false → redirect /connect/shopify
+  7. Si shopify_connected=true → mostrar productos reales
+  
+  Demo environment (demo.smarterbot.cl):
+  - Clerk keys separados (pk_demo_, sk_demo_)
+  - Base de datos aislada (schema demo)
+  - Productos fake pero realistas
+  - Sin redirects a smarterbot.store
+  
+  Localización:
+  - Idioma: Español (Chile) - es-CL
+  - Moneda: CLP (Peso Chileno)
+  - Timezone: America/Santiago
+  - Clerk UI strings personalizados en español
+  
+  Seguridad:
+  - Keys en Vault (nunca en git)
+  - Webhook signature verification
+  - Rate limiting por endpoint
+  - MFA para admins
+  - Session tokens short-lived (1h)
+  
+  Rate limits Clerk API:
+  - Free: 20k req/month, 10k MAU
+  - Pro: Unlimited req, $0.02/MAU after 10k
+  
+  Próximos pasos:
+  1. Crear Vault policy mcp-clerk-read.hcl
+  2. Actualizar MCP registry a 30 providers
+  3. Instalar @clerk/nextjs en fulldaygo.smarterbot.cl
+  4. Configurar Google OAuth en Clerk Dashboard
+  5. Implementar Supabase sync en middleware
+  6. Crear flujo /connect/shopify
+  7. Setup demo.smarterbot.cl
+  8. Configurar localizaci\u00f3n es-CL

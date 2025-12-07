@@ -1,0 +1,462 @@
+# 🔌 SmarterOS MCP Index
+# Índice centralizado de todos los Model Context Protocol providers
+
+version: "2.0"
+updated: "2025-11-16"
+
+metadata:
+  total_providers: 28
+  active_providers: 28
+  vault_path: "smarteros/mcp/"
+  registry_spec: "smarteros-specs/agents/mcp-registry.yml"
+  bootstrap_script: "scripts/bootstrap-mcp-vault.sh"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# TIER 1: Core Infrastructure (Always Active)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+tier_1_core:
+  providers:
+    - name: "github"
+      vault_path: "smarteros/mcp/github"
+      required: true
+      agents: ["gemini", "copilot", "codex"]
+      status: "active"
+      secrets:
+        - token
+        - org
+        - webhook_secret
+    
+    - name: "vault"
+      vault_path: "self"
+      required: true
+      agents: ["gemini", "copilot", "codex"]
+      status: "active"
+      secrets:
+        - token
+    
+      - name: "clerk"
+        vault_path: "smarteros/mcp/clerk"
+        required: true
+        agents: ["gemini", "copilot", "codex"]
+        status: "active"
+        mcp_server: "@clerk/mcp-tools"
+        npm_package: "@clerk/mcp-tools"
+        config: "mcp/clerk.yml"
+        secrets:
+          - clerk_publishable_key
+          - clerk_secret_key
+          - clerk_jwt_key
+          - clerk_webhook_secret
+    
+    - name: "smartermcp"
+      vault_path: "smarteros/mcp/smartermcp"
+      required: true
+      agents: ["codex", "gemini", "copilot"]
+      status: "active"
+      mcp_server: "@smartercl/mcp-server"
+      npm_package: "@smartercl/mcp-server"
+      endpoint: "https://mcp.smarterbot.cl"
+      config: "mcp/smartermcp.yml"
+      secrets:
+        - api_token
+        - tenant_id
+        - endpoint
+    
+    - name: "docker"
+      vault_path: "smarteros/mcp/docker"
+      required: true
+      agents: ["codex"]
+      status: "active"
+      secrets:
+        - host
+        - cert_path
+    
+    - name: "hostinger"
+      vault_path: "smarteros/mcp/hostinger"
+      required: true
+      agents: ["codex", "gemini"]
+      status: "active"
+      mcp_server: "hostinger-api-mcp"
+      npm_package: "hostinger-api-mcp"
+      config: "mcp/hostinger.yml"
+      secrets:
+        - api_token
+        - endpoint
+    
+    - name: "supabase"
+      vault_path: "smarteros/mcp/supabase"
+      required: true
+      agents: ["gemini", "copilot"]
+      status: "active"
+      secrets:
+        - url
+        - anon_key
+        - service_role_key
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# TIER 2: Business Logic
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+tier_2_business:
+  providers:
+    - name: "shopify"
+      vault_path: "smarteros/mcp/shopify"
+      required: false
+      agents: ["gemini", "copilot"]
+      status: "active"
+      secrets:
+        - api_key
+        - api_secret
+        - shop_url
+        - access_token
+    
+    - name: "metabase"
+      vault_path: "smarteros/mcp/metabase"
+      required: false
+      agents: ["gemini"]
+      status: "active"
+      secrets:
+        - url
+        - username
+        - password
+        - session_token
+    
+    - name: "odoo"
+      vault_path: "smarteros/mcp/odoo"
+      required: false
+      agents: ["gemini"]
+      status: "active"
+      secrets:
+        - url
+        - db
+        - username
+        - api_key
+    
+    - name: "n8n"
+      vault_path: "smarteros/mcp/n8n"
+      required: false
+      agents: ["gemini", "codex"]
+      status: "active"
+      secrets:
+        - url
+        - api_key
+    
+    - name: "stripe"
+      vault_path: "smarteros/mcp/stripe"
+      required: false
+      agents: ["gemini"]
+      status: "active"
+      secrets:
+        - api_key
+        - webhook_secret
+        - publishable_key
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# TIER 3: AI/ML
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+tier_3_ai:
+  providers:
+    - name: "openai"
+      vault_path: "smarteros/mcp/openai"
+      required: false
+      agents: ["gemini"]
+      status: "active"
+      secrets:
+        - api_key
+        - organization
+    
+    - name: "anthropic"
+      vault_path: "smarteros/mcp/anthropic"
+      required: false
+      agents: ["gemini"]
+      status: "active"
+      secrets:
+        - api_key
+    
+    - name: "google"
+      vault_path: "smarteros/mcp/google"
+      required: false
+      agents: ["gemini"]
+      status: "active"
+      secrets:
+        - api_key
+        - project_id
+    
+    - name: "context7"
+      vault_path: "public"
+      required: false
+      agents: ["copilot"]
+      status: "active"
+      secrets: []
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# TIER 4: Communication
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+tier_4_communication:
+  providers:
+    - name: "slack"
+      vault_path: "smarteros/mcp/slack"
+      required: false
+      agents: ["gemini", "codex"]
+      status: "active"
+      secrets:
+        - bot_token
+        - webhook_url
+        - signing_secret
+    
+    - name: "twilio"
+      vault_path: "smarteros/mcp/twilio"
+      required: false
+      agents: ["gemini"]
+      status: "active"
+      secrets:
+        - account_sid
+        - auth_token
+        - phone_number
+    
+    - name: "whatsapp"
+      vault_path: "smarteros/mcp/whatsapp"
+      required: false
+      agents: ["gemini"]
+      status: "active"
+      secrets:
+        - api_key
+        - phone_number_id
+        - business_account_id
+    
+    - name: "mailgun"
+      vault_path: "smarteros/mcp/mailgun"
+      required: false
+      agents: ["gemini"]
+      status: "active"
+      secrets:
+        - api_key
+        - domain
+        - webhook_signing_key
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# TIER 5: DevOps/Infrastructure
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+tier_5_devops:
+  providers:
+    - name: "cloudflare"
+      vault_path: "smarteros/mcp/cloudflare"
+      required: false
+      agents: ["codex"]
+      status: "active"
+      secrets:
+        - api_token
+        - zone_id
+        - account_id
+    
+    - name: "aws"
+      vault_path: "smarteros/mcp/aws"
+      required: false
+      agents: ["codex"]
+      status: "active"
+      secrets:
+        - access_key_id
+        - secret_access_key
+        - region
+    
+    - name: "caddy"
+      vault_path: "smarteros/ssh/deploy"
+      required: false
+      agents: ["codex"]
+      status: "active"
+      secrets:
+        - via_ssh
+    
+    - name: "linear"
+      vault_path: "smarteros/mcp/linear"
+      required: false
+      agents: ["gemini"]
+      status: "active"
+      secrets:
+        - api_key
+        - team_id
+    
+    - name: "notion"
+      vault_path: "smarteros/mcp/notion"
+      required: false
+      agents: ["gemini"]
+      status: "active"
+      secrets:
+        - api_key
+        - database_id
+    
+    - name: "vercel"
+      vault_path: "smarteros/mcp/vercel"
+      required: false
+      agents: ["codex", "gemini"]
+      status: "active"
+      mcp_server: "mcp-on-vercel"
+      npm_package: "mcp-handler"
+      config: "mcp/vercel.yml"
+      secrets:
+        - vercel_token
+        - vercel_team_id
+        - vercel_project_id
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Agent Access Summary
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+agent_access:
+  director-gemini:
+    total: 18
+    required: ["github", "vault", "clerk", "smartermcp", "supabase"]
+    optional:
+      tier_2: ["shopify", "metabase", "odoo", "n8n", "stripe"]
+      tier_3: ["openai", "anthropic", "google"]
+      tier_4: ["slack", "twilio", "whatsapp", "mailgun"]
+      tier_5: ["cloudflare", "vercel", "linear", "notion"]
+  
+  writer-copilot:
+    total: 6
+    required: ["github", "vault", "clerk", "smartermcp", "supabase"]
+    optional:
+      tier_2: ["shopify"]
+      tier_3: ["context7"]
+  
+  executor-codex:
+    total: 12
+    required: ["github", "vault", "clerk", "smartermcp", "docker", "hostinger"]
+    optional:
+      tier_2: ["n8n"]
+      tier_4: ["slack"]
+      tier_5: ["cloudflare", "vercel", "aws", "caddy"]
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Vault Policies Summary
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+vault_policies:
+  location: "smarteros-specs/vault/policies/"
+  
+  per_provider:
+    - "mcp-github-read.hcl"
+    - "mcp-supabase-read.hcl"
+    - "mcp-shopify-gemini-read.hcl"
+    - "mcp-slack-write.hcl"
+    # ... (25 policies total)
+  
+  per_agent:
+    - "agent-gemini-mcp-access.hcl"
+    - "agent-copilot-mcp-access.hcl"
+    - "agent-codex-mcp-access.hcl"
+  
+  admin:
+    - "mcp-admin-full.hcl"
+    - "ci-readonly.hcl"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Bootstrap & Management
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+management:
+  bootstrap:
+    script: "scripts/bootstrap-mcp-vault.sh"
+    usage: |
+      # Bootstrap all providers
+      MCP_PROVIDERS="all" ./bootstrap-mcp-vault.sh
+      
+      # Bootstrap specific providers
+      MCP_PROVIDERS="github,vault,supabase,slack" ./bootstrap-mcp-vault.sh
+      
+      # Bootstrap by tier
+      MCP_PROVIDERS="tier1" ./bootstrap-mcp-vault.sh
+  
+  health_check:
+    script: "scripts/check-mcp-health.sh"
+    interval: "5m"
+    alerts:
+      - "slack"
+      - "github_issue"
+  
+  rotation:
+    automatic: true
+    interval: "90d"
+    providers: ["github", "supabase", "shopify", "stripe"]
+    manual_only: ["vault", "ssh"]
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Security & Compliance
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+security:
+  encryption:
+    at_rest: "AES-256-GCM (Vault)"
+    in_transit: "TLS 1.3"
+  
+  audit:
+    enabled: true
+    log_path: "/var/log/smarteros/mcp-audit.log"
+    retention: "90d"
+    includes:
+      - "all_reads"
+      - "all_writes"
+      - "failed_auth"
+      - "rate_limit_exceeded"
+  
+  least_privilege:
+    enforced: true
+    principle: "Each agent only accesses MCPs needed for its role"
+    review_interval: "30d"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Monitoring & Metrics
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+monitoring:
+  metrics:
+    - "mcp_calls_total{provider, agent}"
+    - "mcp_errors_total{provider, agent, error_type}"
+    - "mcp_latency_seconds{provider, agent}"
+    - "mcp_rate_limit_exceeded{provider}"
+    - "mcp_health_status{provider}"
+  
+  dashboards:
+    - name: "MCP Overview"
+      url: "https://metabase.smarterbot.cl/dashboard/mcp-overview"
+    
+    - name: "Agent Usage"
+      url: "https://metabase.smarterbot.cl/dashboard/agent-usage"
+  
+  alerts:
+    - condition: "mcp_health_status == 0"
+      severity: "critical"
+      action: "slack + pagerduty"
+    
+    - condition: "mcp_rate_limit_exceeded > 100"
+      severity: "warning"
+      action: "slack"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Documentation
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+documentation:
+  registry_spec: "smarteros-specs/agents/mcp-registry.yml"
+  architecture: "smarteros-specs/agents/CORE-GRAPH.md"
+  vault_policies: "smarteros-specs/vault/policies/"
+  setup_guide: "README.md#mcp-providers"
+
+notes: |
+  Este índice es la fuente de verdad para todos los MCP providers.
+  
+  - 25 providers organizados en 5 tiers
+  - Cada provider tiene policy dedicada en Vault
+  - Aislamiento por agente (least privilege)
+  - Health checks automáticos cada 5 min
+  - Audit completo de todos los accesos
+  - Rotación automática de secretos cada 90d
+  
+  Actualizar cuando:
+  - Se agregue/remueva un provider
+  - Cambien secrets requeridos
+  - Se modifiquen permisos de agentes

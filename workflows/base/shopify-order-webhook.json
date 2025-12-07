@@ -1,0 +1,58 @@
+{
+  "name": "Shopify Order Created → Odoo + Chatwoot [TEMPLATE]",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "shopify/order-created",
+        "options": {}
+      },
+      "name": "Webhook Shopify",
+      "type": "n8n-nodes-base.webhook",
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const tenantId = $env('TENANT_ID');\nconst order = $input.item.json;\n\nreturn {\n  json: {\n    tenant_id: tenantId,\n    order_id: order.id,\n    order_number: order.order_number,\n    email: order.email,\n    total: order.total_price,\n    currency: order.currency,\n    customer: {\n      id: order.customer?.id,\n      email: order.customer?.email,\n      name: `${order.customer?.first_name} ${order.customer?.last_name}`\n    },\n    line_items: order.line_items,\n    created_at: order.created_at\n  }\n};"
+      },
+      "name": "Parse Order Data",
+      "type": "n8n-nodes-base.function",
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://odoo.smarterbot.cl/api/v1/sale.order",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "bodyParametersJson": "={\n  \"partner_email\": \"{{ $json.customer.email }}\",\n  \"partner_name\": \"{{ $json.customer.name }}\",\n  \"order_line\": {{ JSON.stringify($json.line_items) }},\n  \"amount_total\": {{ $json.total }},\n  \"external_id\": \"shopify_{{ $json.order_id }}\"\n}"
+      },
+      "name": "Create Sale Order Odoo",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://chatwoot.smarterbot.cl/api/v1/accounts/1/conversations",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "bodyParametersJson": "={\n  \"inbox_id\": 1,\n  \"contact\": {\n    \"name\": \"{{ $json.customer.name }}\",\n    \"email\": \"{{ $json.customer.email }}\"\n  },\n  \"message\": {\n    \"content\": \"🛒 Nueva orden Shopify #{{ $json.order_number }}\\nTotal: {{ $json.total }} {{ $json.currency }}\"\n  }\n}"
+      },
+      "name": "Notify Chatwoot",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [850, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Shopify": {
+      "main": [[{ "node": "Parse Order Data", "type": "main", "index": 0 }]]
+    },
+    "Parse Order Data": {
+      "main": [[{ "node": "Create Sale Order Odoo", "type": "main", "index": 0 }]]
+    },
+    "Create Sale Order Odoo": {
+      "main": [[{ "node": "Notify Chatwoot", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {},
+  "tags": ["shopify", "odoo", "chatwoot", "orders"],
+  "updatedAt": "2025-11-19T15:15:00.000Z"
+}

@@ -1,0 +1,477 @@
+# 🌐 MCP Registry Web - mcp.smarterbot.cl
+
+**URL**: https://mcp.smarterbot.cl  
+**Repository**: /root/mcp-smarterbot/  
+**Updated**: 2025-11-19
+
+---
+
+## Overview
+
+Registry web público de todos los MCPs disponibles en SmarterOS con:
+
+- **28 MCP Providers** organizados en 5 tiers
+- **Búsqueda y filtrado** en tiempo real
+- **Detalles de cada MCP**: tools, agents, installation
+- **Stats dashboard**: métricas actualizadas
+- **Responsive design**: funciona en mobile/desktop
+
+---
+
+## Features
+
+### 🔍 Search & Filter
+- Búsqueda por nombre, descripción, tools
+- Filtros por tier (1-5)
+- Filtro por status (active/pending/inactive)
+- Resultados instantáneos
+
+### 📊 Dashboard
+- Total de MCPs disponibles
+- MCPs activos
+- MCPs instalados localmente
+- MCPs core (Tier 1)
+
+### 📝 MCP Details Modal
+Al hacer click en un MCP se muestra:
+- Descripción completa
+- Endpoint/NPM package
+- Lista de tools disponibles
+- Agents que lo usan
+- Comando de instalación
+- Ejemplo de configuración
+- Link a documentación
+
+### 🎨 UI/UX
+- Diseño moderno con gradientes
+- Cards interactivas con hover effects
+- Modal para detalles
+- Color-coded status badges
+- Tier badges
+- Tool tags
+
+---
+
+## Tech Stack
+
+### Frontend
+- **HTML5**: Estructura semántica
+- **CSS3**: Gradientes, flexbox, grid
+- **Vanilla JavaScript**: Sin frameworks (ultra-rápido)
+
+### Data Source
+- **Static JSON**: Array en `app.js`
+- **No backend**: Sitio 100% estático
+- **Auto-updating stats**: Calculadas en cliente
+
+### Deployment
+- **Static hosting**: Caddy/Nginx/Vercel
+- **CDN ready**: Archivos optimizados
+- **Gzip compression**: Habilitado
+
+---
+
+## Architecture
+
+```
+mcp.smarterbot.cl/
+│
+├── index.html          # UI principal
+│   ├── Header con título y descripción
+│   ├── Stats cards (4 métricas)
+│   ├── Search box
+│   ├── Filter buttons (7 filtros)
+│   ├── MCP grid (responsive)
+│   └── Modal de detalles
+│
+├── app.js              # Lógica y datos
+│   ├── mcpData[] - 28 MCPs
+│   ├── updateStats()
+│   ├── renderMCPs()
+│   ├── showMCPDetails()
+│   └── Event listeners
+│
+├── package.json        # Metadata y scripts
+│
+└── README.md           # Documentación
+```
+
+---
+
+## MCP Data Structure
+
+Cada MCP en `mcpData[]` tiene:
+
+```javascript
+{
+  id: string,              // Identificador único
+  name: string,            // Nombre display
+  tier: 1-5,               // Tier en arquitectura
+  category: string,        // core|business|ai|communication|devops
+  status: string,          // active|pending|inactive
+  description: string,     // Descripción corta
+  installed: boolean,      // ¿Está instalado localmente?
+  endpoint: string?,       // URL del servidor (opcional)
+  npmPackage: string?,     // Paquete NPM (opcional)
+  repository: string?,     // Repo GitHub (opcional)
+  agents: string[],        // ['gemini', 'codex', 'copilot']
+  tools: string[],         // Lista de tools disponibles
+  vaultPath: string,       // Path en Vault
+  docs: string             // Link a documentación
+}
+```
+
+---
+
+## Deployment Options
+
+### Option 1: Caddy (Recommended)
+
+```bash
+# Copiar archivos
+sudo mkdir -p /var/www/mcp.smarterbot.cl
+sudo cp -r /root/mcp-smarterbot/* /var/www/mcp.smarterbot.cl/
+
+# Configurar Caddy
+sudo tee -a /etc/caddy/Caddyfile << 'EOF'
+
+mcp.smarterbot.cl {
+  root * /var/www/mcp.smarterbot.cl
+  file_server
+  encode gzip
+  
+  header {
+    X-Frame-Options "SAMEORIGIN"
+    X-Content-Type-Options "nosniff"
+    X-XSS-Protection "1; mode=block"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+  
+  log {
+    output file /var/log/caddy/mcp.smarterbot.cl.log
+  }
+}
+EOF
+
+# Reload Caddy
+sudo caddy reload --config /etc/caddy/Caddyfile
+```
+
+### Option 2: Nginx
+
+```nginx
+server {
+    listen 80;
+    server_name mcp.smarterbot.cl;
+    
+    root /var/www/mcp.smarterbot.cl;
+    index index.html;
+    
+    location / {
+        try_files $uri $uri/ =404;
+    }
+    
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript;
+}
+```
+
+### Option 3: Vercel
+
+```bash
+cd /root/mcp-smarterbot
+
+# Install Vercel CLI
+pnpm add -g vercel
+
+# Deploy
+vercel --prod
+
+# Se genera automáticamente:
+# - URL: https://mcp-smarterbot.vercel.app
+# - SSL certificado
+# - CDN global
+```
+
+### Option 4: Docker
+
+```dockerfile
+FROM nginx:alpine
+COPY /root/mcp-smarterbot /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+```
+
+```bash
+docker build -t mcp-registry /root/mcp-smarterbot
+docker run -d -p 3010:80 --name mcp-registry mcp-registry
+```
+
+---
+
+## DNS Configuration
+
+### Cloudflare DNS (via MCP)
+
+```javascript
+// Using Cloudflare DNS MCP
+tools.dns_records_create({
+  zone_id: "smarterbot.cl_zone_id",
+  type: "A",
+  name: "mcp",
+  content: "89.116.23.167", // VPS IP
+  ttl: 1,
+  proxied: true
+});
+```
+
+### Manual (Hostinger Panel)
+
+1. Login to hpanel.hostinger.com
+2. Domains → smarterbot.cl → DNS
+3. Add A record:
+   - Type: A
+   - Name: mcp
+   - Points to: 89.116.23.167
+   - TTL: 3600
+
+---
+
+## Maintenance
+
+### Update MCP Data
+
+1. Edit `/root/mcp-smarterbot/app.js`
+2. Modify `mcpData[]` array
+3. Re-deploy (copy files or git push)
+
+### Add New MCP
+
+```javascript
+// In app.js, add to mcpData:
+{
+  id: 'new-mcp',
+  name: 'New MCP',
+  tier: 2,
+  category: 'business',
+  status: 'pending',
+  description: 'Description of new MCP',
+  installed: false,
+  npmPackage: 'new-mcp-package',
+  agents: ['gemini'],
+  tools: ['tool1', 'tool2'],
+  vaultPath: 'smarteros/mcp/new-mcp',
+  docs: '/specs/mcp/new-mcp.yml'
+}
+```
+
+### Update Stats
+
+Stats se calculan automáticamente desde `mcpData[]`:
+- Total: `mcpData.length`
+- Active: `filter(m => m.status === 'active')`
+- Installed: `filter(m => m.installed)`
+- Tier 1: `filter(m => m.tier === 1)`
+
+---
+
+## Integration with SmarterOS
+
+### Specs Reference
+
+Cada MCP en el registry apunta a su spec:
+
+```javascript
+docs: '/specs/mcp/github.yml'
+```
+
+Specs ubicados en: `/root/specs/mcp/`
+
+### Vault Paths
+
+Cada MCP indica su path en Vault:
+
+```javascript
+vaultPath: 'smarteros/mcp/github'
+```
+
+Para obtener secrets:
+
+```bash
+vault kv get smarteros/mcp/github
+```
+
+### Agent Usage
+
+Cada MCP lista los agentes que lo usan:
+
+```javascript
+agents: ['gemini', 'copilot', 'codex']
+```
+
+Esto mapea a las configs en `/root/specs/agents/`
+
+---
+
+## Performance
+
+### Load Times
+- **Initial load**: < 100ms (static files)
+- **Search**: < 10ms (client-side filter)
+- **Modal open**: < 5ms (DOM manipulation)
+
+### Optimizations
+- No external dependencies
+- Inline CSS (no extra requests)
+- Vanilla JS (no framework overhead)
+- Gzip compression enabled
+- Minimal DOM updates
+
+### Size
+- `index.html`: ~8KB (minified)
+- `app.js`: ~16KB (minified)
+- **Total**: ~24KB gzipped
+
+---
+
+## Analytics (Future)
+
+### Metrics to Track
+- Page views
+- Search queries
+- Most viewed MCPs
+- Filter usage
+- Modal opens
+
+### Tools
+- Google Analytics
+- Plausible Analytics
+- Self-hosted Matomo
+
+---
+
+## API (Future Enhancement)
+
+### REST API Endpoints
+
+```
+GET  /api/mcps              # List all MCPs
+GET  /api/mcps/:id          # Get MCP details
+GET  /api/mcps/tier/:tier   # Filter by tier
+GET  /api/mcps/status/:status  # Filter by status
+GET  /api/stats             # Get stats
+```
+
+### Implementation
+
+```javascript
+// Using Next.js API routes or Express
+export default async function handler(req, res) {
+  const mcps = await getMCPs();
+  res.status(200).json(mcps);
+}
+```
+
+---
+
+## Security
+
+### Headers Configured
+- `X-Frame-Options: SAMEORIGIN`
+- `X-Content-Type-Options: nosniff`
+- `X-XSS-Protection: 1; mode=block`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+
+### HTTPS
+- Automatic via Caddy/Vercel
+- Let's Encrypt certificate
+- HSTS enabled
+
+### Content Security Policy (Future)
+
+```
+Content-Security-Policy: 
+  default-src 'self'; 
+  script-src 'self'; 
+  style-src 'self' 'unsafe-inline';
+```
+
+---
+
+## Monitoring
+
+### Health Check
+
+```bash
+curl https://mcp.smarterbot.cl/
+# Should return 200 and HTML content
+```
+
+### Uptime Monitoring
+- UptimeRobot
+- Pingdom
+- StatusCake
+
+### Logs
+
+```bash
+# Caddy logs
+tail -f /var/log/caddy/mcp.smarterbot.cl.log
+
+# Nginx logs
+tail -f /var/log/nginx/access.log
+```
+
+---
+
+## Roadmap
+
+### Phase 1 ✅ (Completed)
+- [x] Create HTML/CSS/JS
+- [x] Implement search & filters
+- [x] Add all 28 MCPs
+- [x] Modal for details
+- [x] Responsive design
+
+### Phase 2 🚧 (In Progress)
+- [ ] Deploy to mcp.smarterbot.cl
+- [ ] Configure DNS
+- [ ] Add SSL certificate
+- [ ] Setup monitoring
+
+### Phase 3 📋 (Planned)
+- [ ] REST API
+- [ ] Auto-discovery of installed MCPs
+- [ ] Health status indicators
+- [ ] Integration with Vault for real-time status
+
+### Phase 4 🔮 (Future)
+- [ ] Analytics dashboard
+- [ ] MCP marketplace
+- [ ] User ratings/reviews
+- [ ] Installation wizard
+
+---
+
+## Related Documentation
+
+- **MCP Index**: `/root/specs/mcp/index.yml`
+- **MCP Structure**: `/root/specs/MCP-STRUCTURE.md`
+- **Individual Specs**: `/root/specs/mcp/*.yml`
+- **Vault Policies**: `/root/specs/vault/policies/`
+- **Agent Configs**: `/root/specs/agents/`
+
+---
+
+## Support
+
+**Documentation**: This file  
+**Issues**: Create in smarteros-specs repo  
+**Updates**: Push to /root/mcp-smarterbot/  
+
+---
+
+**Maintained by**: SmarterOS Team  
+**License**: Private - SmarterOS  
+**Version**: 1.0.0  
+**Last Updated**: 2025-11-19

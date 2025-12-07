@@ -1,0 +1,301 @@
+# SmarterOS Tenant Template
+# Plantilla base para crear nuevos tenants
+
+# Metadata
+template_version: "0.1.0"
+template_type: "default"
+description: "Default tenant configuration template"
+
+# Tenant configuration
+tenant:
+  # Basic info (will be filled during provisioning)
+  id: "{{ TENANT_ID }}"
+  rut: "{{ TENANT_RUT }}"
+  name: "{{ TENANT_NAME }}"
+  slug: "{{ TENANT_SLUG }}"
+  
+  # Domains
+  domain: "{{ TENANT_SLUG }}.smarterbot.cl"
+  custom_domain: null
+  
+  # Status
+  status: "active"
+  plan: "free"
+  
+  # Timestamps
+  created_at: "{{ CREATED_AT }}"
+  activated_at: "{{ ACTIVATED_AT }}"
+  
+  # Owner
+  owner:
+    email: "{{ OWNER_EMAIL }}"
+    clerk_user_id: "{{ CLERK_USER_ID }}"
+    first_name: "{{ OWNER_FIRST_NAME }}"
+    last_name: "{{ OWNER_LAST_NAME }}"
+
+# Services configuration
+services:
+  
+  # Shopify
+  shopify:
+    enabled: true
+    store_url: "{{ TENANT_SLUG }}.myshopify.com"
+    store_name: "{{ TENANT_NAME }}"
+    currency: "CLP"
+    timezone: "America/Santiago"
+    initial_products: []
+    initial_collections: []
+    theme: "dawn"  # Shopify free theme
+    
+  # Odoo
+  odoo:
+    enabled: true
+    database: "smarteros"
+    company_name: "{{ TENANT_NAME }}"
+    company_id: null  # assigned during provisioning
+    modules:
+      - crm
+      - sales
+      - contacts
+      - website
+    users:
+      - email: "{{ OWNER_EMAIL }}"
+        role: "admin"
+    
+  # Chatwoot
+  chatwoot:
+    enabled: true
+    account_name: "{{ TENANT_NAME }}"
+    account_id: null  # assigned during provisioning
+    inbox_name: "Website Chat"
+    inbox_id: null
+    channels:
+      - type: "web_widget"
+        enabled: true
+      - type: "whatsapp"
+        enabled: false
+      - type: "email"
+        enabled: false
+    
+  # Botpress
+  botpress:
+    enabled: true
+    workspace_name: "{{ TENANT_NAME }}"
+    workspace_id: null  # assigned during provisioning
+    bots:
+      - name: "Assistant"
+        type: "ecommerce"
+        language: "es"
+        enabled: true
+    
+  # N8N Workflows
+  n8n:
+    enabled: true
+    webhook_path: "/webhook/{{ TENANT_RUT }}"
+    workflows:
+      - name: "Sync Contacts to Odoo"
+        template: "sync-contacts-odoo"
+        enabled: true
+        tags: ["{{ TENANT_RUT }}", "contacts", "sync"]
+      - name: "New Order from Shopify"
+        template: "shopify-order-automation"
+        enabled: true
+        tags: ["{{ TENANT_RUT }}", "shopify", "orders"]
+      - name: "Chatwoot Message Router"
+        template: "chatwoot-message-router"
+        enabled: true
+        tags: ["{{ TENANT_RUT }}", "chatwoot", "routing"]
+
+# Database schema
+database:
+  tables:
+    tenants:
+      id: "{{ TENANT_ID }}"
+      rut: "{{ TENANT_RUT }}"
+      name: "{{ TENANT_NAME }}"
+      slug: "{{ TENANT_SLUG }}"
+      domain: "{{ TENANT_SLUG }}.smarterbot.cl"
+      status: "active"
+      plan: "free"
+      owner_id: "{{ CLERK_USER_ID }}"
+      created_at: "now()"
+      updated_at: "now()"
+    
+    tenant_settings:
+      tenant_id: "{{ TENANT_ID }}"
+      timezone: "America/Santiago"
+      currency: "CLP"
+      language: "es"
+      country: "CL"
+    
+    tenant_services:
+      tenant_id: "{{ TENANT_ID }}"
+      shopify_store_url: "{{ TENANT_SLUG }}.myshopify.com"
+      odoo_company_id: null
+      chatwoot_account_id: null
+      botpress_workspace_id: null
+      n8n_webhook_path: "/webhook/{{ TENANT_RUT }}"
+
+# File structure
+files:
+  tenant_directory: "tenants/{{ TENANT_RUT }}"
+  structure:
+    - config/
+    - workflows/
+    - bots/
+    - data/
+    - backups/
+  
+  config_files:
+    - name: ".env"
+      template: "templates/env.template"
+      variables:
+        TENANT_ID: "{{ TENANT_ID }}"
+        TENANT_RUT: "{{ TENANT_RUT }}"
+        TENANT_NAME: "{{ TENANT_NAME }}"
+        TENANT_DOMAIN: "{{ TENANT_SLUG }}.smarterbot.cl"
+        SHOPIFY_STORE_URL: "{{ TENANT_SLUG }}.myshopify.com"
+        N8N_WEBHOOK_URL: "https://n8n.smarterbot.cl/webhook/{{ TENANT_RUT }}"
+    
+    - name: "config.yml"
+      template: "templates/config.template.yml"
+
+# DNS Configuration
+dns:
+  records:
+    - type: "CNAME"
+      name: "{{ TENANT_SLUG }}"
+      content: "app.smarterbot.cl"
+      proxied: true
+      ttl: 1
+    
+    # If custom domain
+    - type: "CNAME"
+      name: "{{ CUSTOM_DOMAIN }}"
+      content: "app.smarterbot.cl"
+      proxied: true
+      ttl: 1
+      condition: "{{ CUSTOM_DOMAIN != null }}"
+
+# Environment variables
+environment:
+  TENANT_ID: "{{ TENANT_ID }}"
+  TENANT_RUT: "{{ TENANT_RUT }}"
+  TENANT_NAME: "{{ TENANT_NAME }}"
+  TENANT_SLUG: "{{ TENANT_SLUG }}"
+  TENANT_DOMAIN: "{{ TENANT_SLUG }}.smarterbot.cl"
+  TENANT_PLAN: "free"
+  
+  # Service URLs
+  SHOPIFY_STORE_URL: "{{ TENANT_SLUG }}.myshopify.com"
+  SHOPIFY_ADMIN_URL: "https://{{ TENANT_SLUG }}.myshopify.com/admin"
+  ODOO_URL: "https://odoo.smarterbot.cl"
+  CHATWOOT_URL: "https://chatwoot.smarterbot.cl"
+  BOTPRESS_URL: "https://botpress.smarterbot.cl"
+  N8N_WEBHOOK_URL: "https://n8n.smarterbot.cl/webhook/{{ TENANT_RUT }}"
+  
+  # Database
+  SUPABASE_URL: "{{ SUPABASE_URL }}"
+  SUPABASE_ANON_KEY: "{{ SUPABASE_ANON_KEY }}"
+
+# Resource limits
+limits:
+  max_users: 2
+  max_bots: 1
+  max_workflows: 5
+  max_storage_gb: 1
+  max_api_calls_per_day: 1000
+  max_webhook_calls_per_day: 10000
+
+# Default settings
+settings:
+  timezone: "America/Santiago"
+  currency: "CLP"
+  language: "es"
+  country: "CL"
+  date_format: "DD/MM/YYYY"
+  time_format: "24h"
+  
+  # Features
+  features:
+    multi_channel_support: false
+    advanced_analytics: false
+    custom_domain: false
+    api_access: true
+    webhook_access: true
+    white_label: false
+  
+  # Notifications
+  notifications:
+    email: true
+    sms: false
+    push: false
+    slack: false
+  
+  # Branding
+  branding:
+    logo_url: null
+    primary_color: "#3B82F6"
+    secondary_color: "#10B981"
+
+# Webhooks
+webhooks:
+  endpoints:
+    - event: "tenant.created"
+      url: "https://n8n.smarterbot.cl/webhook/system/tenant-created"
+      enabled: true
+    - event: "tenant.updated"
+      url: "https://n8n.smarterbot.cl/webhook/system/tenant-updated"
+      enabled: true
+
+# Monitoring
+monitoring:
+  health_checks:
+    - endpoint: "https://{{ TENANT_SLUG }}.smarterbot.cl"
+      interval: "5m"
+      timeout: "10s"
+    - endpoint: "{{ SHOPIFY_STORE_URL }}"
+      interval: "15m"
+      timeout: "10s"
+  
+  alerts:
+    - type: "downtime"
+      threshold: "5m"
+      notify: ["{{ OWNER_EMAIL }}"]
+    - type: "high_error_rate"
+      threshold: "5%"
+      notify: ["{{ OWNER_EMAIL }}"]
+
+# Backup configuration
+backup:
+  enabled: true
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  retention_days: 7
+  includes:
+    - database_records
+    - uploaded_files
+    - workflow_configurations
+    - bot_configurations
+  excludes:
+    - temp_files
+    - cache
+    - logs
+
+# Onboarding
+onboarding:
+  steps:
+    - id: "welcome"
+      title: "Bienvenido a SmarterOS"
+      completed: false
+    - id: "connect_shopify"
+      title: "Conecta tu tienda Shopify"
+      completed: false
+    - id: "setup_bot"
+      title: "Configura tu primer bot"
+      completed: false
+    - id: "create_workflow"
+      title: "Crea tu primer workflow"
+      completed: false
+    - id: "invite_team"
+      title: "Invita a tu equipo"
+      completed: false

@@ -1,0 +1,31 @@
+# SmarterOS Tenant Registry
+version: "0.3.1"
+last_updated: "2025-11-19T15:14:56Z"
+total_tenants: 1
+active_tenants: 1
+suspended_tenants: 0
+
+tenants:
+  - id: "tenant_demo_001"
+    rut: "00000000-0"
+    name: "Demo SmarterOS"
+    slug: "demo"
+    domain: "demo.smarterbot.cl"
+    status: "active"
+    plan: "professional"
+    created_at: "2025-11-19T15:14:56Z"
+    
+    services:
+      odoo: true
+      chatwoot: true
+      n8n: true
+      metabase: true
+      shopify: false
+
+statistics:
+  total_created: 1
+  active: 1
+  by_plan:
+    professional: 1
+  by_country:
+    CL: 1

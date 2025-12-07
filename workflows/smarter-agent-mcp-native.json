@@ -1,0 +1,500 @@
+{
+  "name": "SmarterAgent MCP Native",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "smarter-agent-mcp",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger-mcp",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "smarter-agent-mcp-webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "user-command",
+              "name": "command",
+              "value": "={{ $json.body.command }}",
+              "type": "string"
+            },
+            {
+              "id": "user-args",
+              "name": "args",
+              "value": "={{ $json.body.args || {} }}",
+              "type": "object"
+            },
+            {
+              "id": "tenant-id",
+              "name": "tenant_id",
+              "value": "={{ $json.body.tenant_id || 'default' }}",
+              "type": "string"
+            },
+            {
+              "id": "context-type",
+              "name": "context",
+              "value": "={{ $json.body.context || 'general' }}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "parse-input-mcp",
+      "name": "Parse Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "id": "route-mcp-tools",
+              "conditions": {
+                "all": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "execute_tool",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "output": 0
+            },
+            {
+              "id": "route-ai-analysis",
+              "conditions": {
+                "all": [
+                  {
+                    "leftValue": "={{ $json.context }}",
+                    "rightValue": "analysis",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "output": 1
+            },
+            {
+              "id": "route-hybrid",
+              "conditions": {
+                "all": [
+                  {
+                    "leftValue": "={{ $json.context }}",
+                    "rightValue": "general",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "output": 2
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": 2
+        }
+      },
+      "id": "router-mcp",
+      "name": "Command Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SMARTER_MCP_SERVER }}/execute",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "tool",
+              "value": "={{ $json.args.tool }}"
+            },
+            {
+              "name": "params",
+              "value": "={{ $json.args.params }}"
+            },
+            {
+              "name": "tenant_id",
+              "value": "={{ $json.tenant_id }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "mcp-client-node",
+      "name": "MCP Client → SmarterMCP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 180],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "smarter-mcp-auth",
+          "name": "SmarterMCP Auth Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gemini-1.5-pro",
+        "options": {
+          "temperature": 0.8,
+          "maxTokens": 4000
+        },
+        "prompt": {
+          "messages": [
+            {
+              "role": "system",
+              "content": "Eres SmarterAgent Director con acceso a herramientas MCP. Analiza la solicitud y determina qué herramientas del SmarterMCP Server necesitas ejecutar. Tienes acceso a: vault_read, vault_write, docker_run, supabase_query, github_create_issue, shopify_sync, clerk_validate_session. Responde en español (Chile) con estrategia accionable."
+            },
+            {
+              "role": "user",
+              "content": "={{ $json.command }}: {{ JSON.stringify($json.args) }}"
+            }
+          ]
+        }
+      },
+      "id": "gemini-analysis-mcp",
+      "name": "Gemini (Strategy + MCP)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "credentials": {
+        "googleGeminiApi": {
+          "id": "gemini-credentials",
+          "name": "Google Gemini API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Procesador de respuestas MCP + AI\nconst parseInput = $('Parse Input').item.json;\nconst command = parseInput.command;\nconst tenant_id = parseInput.tenant_id;\n\nlet response = {\n  command: command,\n  tenant_id: tenant_id,\n  timestamp: new Date().toISOString(),\n  agent: 'SmarterAgent-MCP-Native',\n  version: '2.0',\n  execution_path: []\n};\n\n// Detectar qué path se ejecutó\nconst mcpResult = $input.all().find(item => item.json.mcp_tool);\nconst geminiResult = $input.all().find(item => item.json.candidates);\nconst openaiResult = $input.all().find(item => item.json.choices);\n\nif (mcpResult) {\n  // Respuesta directa de MCP Tool\n  response.execution_path.push('mcp-direct');\n  response.mcp_result = mcpResult.json;\n  response.answer = {\n    type: 'tool_execution',\n    tool: mcpResult.json.tool,\n    status: mcpResult.json.status,\n    output: mcpResult.json.output,\n    summary: `Herramienta MCP \"${mcpResult.json.tool}\" ejecutada: ${mcpResult.json.status}`\n  };\n  response.confidence = 0.98;\n  \n} else if (geminiResult) {\n  // Análisis estratégico con Gemini\n  response.execution_path.push('gemini-strategy');\n  const geminiText = geminiResult.json.candidates[0].content.parts[0].text;\n  \n  // Extraer si Gemini sugiere usar MCP tools\n  const mcpToolMatch = geminiText.match(/usar herramienta ([a-z_]+)/i);\n  \n  response.answer = {\n    type: 'strategic_analysis',\n    analysis: geminiText,\n    suggested_mcp_tools: mcpToolMatch ? [mcpToolMatch[1]] : [],\n    next_steps: geminiText.split('\\n').filter(line => line.match(/^[0-9]+\\./)).slice(0, 3)\n  };\n  response.confidence = 0.92;\n  \n} else if (openaiResult) {\n  // Análisis técnico con OpenAI\n  response.execution_path.push('openai-code');\n  response.answer = {\n    type: 'technical_solution',\n    solution: openaiResult.json.choices[0].message.content\n  };\n  response.confidence = 0.95;\n  \n} else {\n  // Fallback\n  response.execution_path.push('fallback');\n  response.answer = {\n    type: 'error',\n    message: 'No se pudo procesar el comando',\n    suggestion: 'Verifica el formato del comando y argumentos'\n  };\n  response.confidence = 0.0;\n}\n\n// Metadata\nresponse.metadata = {\n  processing_time_ms: Date.now() - new Date(parseInput.timestamp || Date.now()).getTime(),\n  mcp_server: process.env.SMARTER_MCP_SERVER || 'not-configured',\n  execution_node: response.execution_path[0]\n};\n\nreturn [{ json: response }];"
+      },
+      "id": "process-mcp-response",
+      "name": "Process MCP Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SMARTER_MCP_SERVER }}/tools/list",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "mcp-list-tools",
+      "name": "MCP List Available Tools",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 500],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "smarter-mcp-auth",
+          "name": "SmarterMCP Auth Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gpt-4-turbo-preview",
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 2000
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Eres SmarterAgent Code Executor. Tienes acceso directo a herramientas MCP. Las herramientas disponibles son: {{ $('MCP List Available Tools').item.json.tools }}. Genera código preciso y ejecuta comandos via MCP cuando sea necesario. Responde en español (Chile)."
+            },
+            {
+              "role": "user",
+              "content": "={{ $json.command }}: {{ JSON.stringify($json.args) }}"
+            }
+          ]
+        }
+      },
+      "id": "openai-with-mcp",
+      "name": "OpenAI (Code + MCP Tools)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [900, 420],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credentials",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "log-entry-mcp",
+              "name": "log",
+              "value": "={{ $json }}",
+              "type": "object"
+            },
+            {
+              "id": "vault-path-mcp",
+              "name": "vault_path",
+              "value": "smarteros/agents/logs/{{ $json.tenant_id }}/{{ $now.format('YYYY-MM-DD-HH') }}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "prepare-log-mcp",
+      "name": "Prepare Log",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SMARTER_MCP_SERVER }}/tools/vault_write",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "path",
+              "value": "={{ $json.vault_path }}"
+            },
+            {
+              "name": "data",
+              "value": "={{ JSON.stringify($json.log) }}"
+            },
+            {
+              "name": "tenant_id",
+              "value": "={{ $json.log.tenant_id }}"
+            }
+          ]
+        }
+      },
+      "id": "save-via-mcp",
+      "name": "Save Log via MCP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "smarter-mcp-auth",
+          "name": "SmarterMCP Auth Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.log, null, 2) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "X-Agent",
+                "value": "SmarterAgent-MCP-Native/2.0"
+              },
+              {
+                "name": "X-MCP-Server",
+                "value": "={{ $env.SMARTER_MCP_SERVER }}"
+              },
+              {
+                "name": "X-Execution-Path",
+                "value": "={{ $json.log.execution_path.join('→') }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-success-mcp",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1780, 300]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input": {
+      "main": [
+        [
+          {
+            "node": "Command Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Command Router": {
+      "main": [
+        [
+          {
+            "node": "MCP Client → SmarterMCP",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gemini (Strategy + MCP)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "MCP List Available Tools",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "OpenAI (Code + MCP Tools)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "MCP List Available Tools",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP Client → SmarterMCP": {
+      "main": [
+        [
+          {
+            "node": "Process MCP Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini (Strategy + MCP)": {
+      "main": [
+        [
+          {
+            "node": "Process MCP Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI (Code + MCP Tools)": {
+      "main": [
+        [
+          {
+            "node": "Process MCP Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process MCP Response": {
+      "main": [
+        [
+          {
+            "node": "Prepare Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Log": {
+      "main": [
+        [
+          {
+            "node": "Save Log via MCP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Log via MCP": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "error-handler-workflow"
+  },
+  "versionId": "2.0.0",
+  "meta": {
+    "instanceId": "n8n.smarterbot.cl"
+  },
+  "tags": [
+    {
+      "id": "smarter-os",
+      "name": "OS"
+    },
+    {
+      "id": "mcp-native",
+      "name": "MCP-Native"
+    },
+    {
+      "id": "ai-agent",
+      "name": "Agent"
+    }
+  ],
+  "id": "mcp-native-agent"
+}

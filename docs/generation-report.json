@@ -1,0 +1,12 @@
+{
+  "generated": [
+    "getting-started.md",
+    "api-reference.md",
+    "integrations.md",
+    "partner-guide.md",
+    "troubleshooting.md",
+    "architecture.md"
+  ],
+  "failed": [],
+  "timestamp": "2025-11-23T09:52:14.689128"
+}

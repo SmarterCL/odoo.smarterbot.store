@@ -1,0 +1,591 @@
+# E2E FLOW: Soporte con Imagen (OCR + RAG)
+# Patrón: Chatwoot → n8n (OCR) → Botpress (RAG) → MCP (Odoo) → n8n → Chatwoot
+# Multi-tenant: Opción A (shared services, workspace isolation)
+
+flow_id: "e2e_ocr_support"
+version: "1.0.0"
+status: "production"
+priority: "high"
+latency_target: "< 8s"
+success_rate_target: "> 92%"
+
+# =============================================================================
+# DESCRIPCIÓN
+# =============================================================================
+
+description: |
+  Cliente envía foto de factura/producto vía WhatsApp → n8n descarga imagen
+  → OCR extrae texto → Botpress hace RAG sobre docs → MCP consulta Odoo
+  → se construye respuesta con info de garantía/devolución
+  → Cliente recibe instrucciones específicas
+
+use_case: |
+  Cliente: [Envía foto de factura]
+  Sistema: [OCR detecta: Factura #INV-2025-001, Producto: Zapatilla Running, Fecha: 2025-10-15]
+  Sistema: "Tu compra tiene garantía de 90 días. Puedes hacer devolución gratuita
+           hasta el 2026-01-13. ¿Qué problema tiene el producto?"
+
+# =============================================================================
+# ARQUITECTURA MULTI-TENANT
+# =============================================================================
+
+multi_tenant:
+  isolation_level: "workspace"
+  tenant_resolution: "chatwoot_account_id"
+  vault_paths:
+    - "secret/tenant/<TENANT_ID>/chatwoot/api_token"
+    - "secret/tenant/<TENANT_ID>/chatwoot/hmac_secret"
+    - "secret/tenant/<TENANT_ID>/botpress/api_key"
+    - "secret/tenant/<TENANT_ID>/botpress/workspace_id"
+    - "secret/tenant/<TENANT_ID>/botpress/bot_id_support"
+    - "secret/tenant/<TENANT_ID>/odoo/api_key"
+    - "secret/tenant/<TENANT_ID>/odoo/instance_url"
+    - "secret/tenant/<TENANT_ID>/ocr/api_key"  # Google Cloud Vision API
+
+headers_standard:
+  - name: "X-SMOS-Tenant-ID"
+    required: true
+  - name: "X-SMOS-Conversation-ID"
+    required: true
+  - name: "X-SMOS-Channel"
+    required: true
+  - name: "X-Chatwoot-Signature"
+    required: true
+  - name: "X-SMOS-User-Role"
+    required: true
+
+# =============================================================================
+# PASO 1: CLIENTE ENVÍA IMAGEN POR WHATSAPP
+# =============================================================================
+
+step_1_whatsapp_image_incoming:
+  trigger: "WhatsApp message with image attachment"
+  provider: "Twilio / WhatsApp Business API"
+  destination: "Chatwoot inbox (tenant-specific)"
+  
+  webhook_fired:
+    url: "https://n8n.smarterbot.cl/webhook/chatwoot-events"
+    method: "POST"
+    headers:
+      - "Content-Type: application/json"
+      - "X-Chatwoot-Signature: <HMAC_SHA256>"
+    
+    payload_example: |
+      {
+        "event": "message_created",
+        "message_type": "incoming",
+        "account": { "id": 1 },
+        "conversation": { "id": 12346, "inbox_id": 7 },
+        "sender": {
+          "id": 9989,
+          "name": "María González",
+          "phone_number": "+56912345678",
+          "email": null
+        },
+        "content": "Tengo un problema con mi compra",
+        "attachments": [
+          {
+            "id": 7788,
+            "file_type": "image",
+            "data_url": "https://chatwoot-cdn.smarterbot.cl/uploads/7788/factura.jpg"
+          }
+        ],
+        "created_at": "2025-11-17T15:45:00Z"
+      }
+
+# =============================================================================
+# PASO 2: n8n VALIDA + DESCARGA IMAGEN + OCR
+# =============================================================================
+
+step_2_n8n_ocr_processing:
+  workflow_name: "chatwoot-ocr-router"
+  workflow_file: "n8n-workflows/chatwoot-ocr-router.json"
+  
+  nodes:
+    - node_1_webhook:
+        type: "n8n-nodes-base.webhook"
+        name: "Chatwoot Webhook Receiver"
+        path: "/webhook/chatwoot-events"
+        method: "POST"
+        response_mode: "onReceived"
+    
+    - node_2_validate_hmac:
+        type: "n8n-nodes-base.function"
+        name: "Validate HMAC Signature"
+        code: |
+          const crypto = require('crypto');
+          const signature = $headers['x-chatwoot-signature'];
+          const payload = JSON.stringify($input.item.json);
+          
+          const tenantId = $input.item.json.account.id;
+          const hmacSecret = await vault.read(`secret/tenant/${tenantId}/chatwoot/hmac_secret`);
+          
+          const expectedSignature = crypto
+            .createHmac('sha256', hmacSecret)
+            .update(payload)
+            .digest('hex');
+          
+          if (signature !== expectedSignature) {
+            throw new Error('Invalid HMAC signature');
+          }
+          
+          return $input.item;
+    
+    - node_3_resolve_tenant:
+        type: "n8n-nodes-base.function"
+        name: "Resolve Tenant ID"
+        code: |
+          const accountId = $input.item.json.account.id;
+          const tenantId = await resolveTenantId(accountId);
+          
+          const credentials = {
+            botpress_api_key: await vault.read(`secret/tenant/${tenantId}/botpress/api_key`),
+            botpress_workspace_id: await vault.read(`secret/tenant/${tenantId}/botpress/workspace_id`),
+            botpress_bot_id_support: await vault.read(`secret/tenant/${tenantId}/botpress/bot_id_support`),
+            odoo_api_key: await vault.read(`secret/tenant/${tenantId}/odoo/api_key`),
+            odoo_instance_url: await vault.read(`secret/tenant/${tenantId}/odoo/instance_url`),
+            ocr_api_key: await vault.read(`secret/tenant/${tenantId}/ocr/api_key`)
+          };
+          
+          return { ...item, tenant_id: tenantId, credentials };
+    
+    - node_4_check_attachments:
+        type: "n8n-nodes-base.if"
+        name: "Has Attachments?"
+        condition:
+          - "={{ $json.attachments.length > 0 }}"
+    
+    - node_5_download_image:
+        type: "n8n-nodes-base.httpRequest"
+        name: "Download Image from Chatwoot CDN"
+        method: "GET"
+        url: "={{ $json.attachments[0].data_url }}"
+        response_format: "file"
+        options:
+          timeout: 10000
+    
+    - node_6_ocr_extraction:
+        type: "n8n-nodes-base.googleCloudVision"
+        name: "OCR: Extract Text from Image"
+        operation: "detectText"
+        credentials: "={{ $node['Resolve Tenant ID'].json.credentials.ocr_api_key }}"
+        image: "={{ $node['Download Image from Chatwoot CDN'].binary }}"
+        options:
+          language_hints: ["es", "en"]
+  
+  ocr_response_example: |
+    {
+      "text": "FACTURA\nNúmero: INV-2025-001\nProducto: Zapatilla Running Azul\nTalla: 42\nPrecio: 39.990 CLP\nFecha: 15/10/2025\nGarantía: 90 días\n",
+      "confidence": 0.97,
+      "extracted_entities": {
+        "invoice_number": "INV-2025-001",
+        "product_name": "Zapatilla Running Azul",
+        "product_size": "42",
+        "purchase_date": "2025-10-15",
+        "warranty_days": 90
+      }
+    }
+
+# =============================================================================
+# PASO 3: n8n LLAMA BOTPRESS CON OCR RESULTS
+# =============================================================================
+
+step_3_n8n_build_botpress_request:
+  nodes:
+    - node_7_build_botpress_payload:
+        type: "n8n-nodes-base.set"
+        name: "Build Botpress Request with OCR"
+        values:
+          tenant_id: "={{ $node['Resolve Tenant ID'].json.tenant_id }}"
+          channel: "whatsapp"
+          conversation_id: "={{ $node['Chatwoot Webhook Receiver'].json.conversation.id }}"
+          contact:
+            id: "={{ $node['Chatwoot Webhook Receiver'].json.sender.id }}"
+            name: "={{ $node['Chatwoot Webhook Receiver'].json.sender.name }}"
+            phone: "={{ $node['Chatwoot Webhook Receiver'].json.sender.phone_number }}"
+            email: "={{ $node['Chatwoot Webhook Receiver'].json.sender.email }}"
+          message:
+            id: "={{ $node['Chatwoot Webhook Receiver'].json.id }}"
+            type: "image_with_text"
+            content: "={{ $node['Chatwoot Webhook Receiver'].json.content }}"
+            ocr_extracted_text: "={{ $node['OCR: Extract Text from Image'].json.text }}"
+            ocr_entities: "={{ $node['OCR: Extract Text from Image'].json.extracted_entities }}"
+            attachments: "={{ $node['Chatwoot Webhook Receiver'].json.attachments }}"
+          context:
+            language: "es-CL"
+            ocr_confidence: "={{ $node['OCR: Extract Text from Image'].json.confidence }}"
+            invoice_detected: true
+    
+    - node_8_call_botpress:
+        type: "n8n-nodes-base.httpRequest"
+        name: "Call Botpress Support Agent"
+        method: "POST"
+        url: "https://botpress.smarterbot.cl/api/v1/workspaces/{{ $node['Resolve Tenant ID'].json.credentials.botpress_workspace_id }}/bots/{{ $node['Resolve Tenant ID'].json.credentials.botpress_bot_id_support }}/run"
+        headers:
+          Authorization: "Bearer {{ $node['Resolve Tenant ID'].json.credentials.botpress_api_key }}"
+          Content-Type: "application/json"
+        body: "={{ $node['Build Botpress Request with OCR'].json }}"
+        response_format: "json"
+
+# =============================================================================
+# PASO 4: BOTPRESS RAG + DETERMINA RUTA
+# =============================================================================
+
+step_4_botpress_rag_processing:
+  service: "Botpress ADK"
+  agent: "support_agent"
+  workspace_id: "{{ tenant_workspace_id }}"
+  bot_id: "{{ bot_id_support }}"
+  
+  input_contract: |
+    {
+      "tenant_id": "TENANT_DEMO",
+      "channel": "whatsapp",
+      "conversation_id": 12346,
+      "contact": {
+        "id": 9989,
+        "name": "María González",
+        "phone": "+56912345678",
+        "email": null
+      },
+      "message": {
+        "id": 556,
+        "type": "image_with_text",
+        "content": "Tengo un problema con mi compra",
+        "ocr_extracted_text": "FACTURA\nNúmero: INV-2025-001\nProducto: Zapatilla Running Azul\nTalla: 42\nPrecio: 39.990 CLP\nFecha: 15/10/2025\nGarantía: 90 días\n",
+        "ocr_entities": {
+          "invoice_number": "INV-2025-001",
+          "product_name": "Zapatilla Running Azul",
+          "product_size": "42",
+          "purchase_date": "2025-10-15",
+          "warranty_days": 90
+        },
+        "attachments": [
+          {
+            "id": 7788,
+            "file_type": "image",
+            "data_url": "https://chatwoot-cdn.smarterbot.cl/uploads/7788/factura.jpg"
+          }
+        ]
+      },
+      "context": {
+        "language": "es-CL",
+        "ocr_confidence": 0.97,
+        "invoice_detected": true
+      }
+    }
+  
+  botpress_rag_logic:
+    - "Parse OCR extracted text"
+    - "Query RAG over warranty/return policy docs"
+    - "Calculate warranty expiration: 2025-10-15 + 90 days = 2026-01-13"
+    - "Classify intent: warranty_inquiry"
+    - "Determine route: odoo_invoice_lookup"
+    - "Generate structured response with actions"
+  
+  rag_query_example: |
+    Query: "¿Cuál es la política de garantía para Zapatilla Running?"
+    RAG Results:
+      - Document: "politica-garantia.md"
+        Chunk: "Zapatillas tienen garantía de 90 días desde compra. Devolución gratuita dentro de 30 días."
+        Similarity: 0.92
+      - Document: "politica-devoluciones.md"
+        Chunk: "Para devoluciones, enviar foto de factura + producto. Reembolso en 7 días hábiles."
+        Similarity: 0.88
+  
+  output_contract: |
+    {
+      "intent": "warranty_inquiry",
+      "confidence": 0.96,
+      "route": "odoo_invoice_lookup",
+      "entities": {
+        "invoice_number": "INV-2025-001",
+        "product_name": "Zapatilla Running Azul",
+        "purchase_date": "2025-10-15",
+        "warranty_expiration": "2026-01-13",
+        "warranty_status": "active"
+      },
+      "rag_context": {
+        "warranty_days": 90,
+        "return_window_days": 30,
+        "return_policy": "Devolución gratuita con foto de factura + producto"
+      },
+      "actions": [
+        {
+          "type": "CALL_MCP",
+          "tool": "odoo_find_invoice",
+          "params": {
+            "invoice_number": "INV-2025-001"
+          }
+        }
+      ],
+      "reply_suggestion": "Tu compra tiene garantía de 90 días hasta el 13 de enero de 2026. ¿Qué problema tiene el producto?"
+    }
+
+# =============================================================================
+# PASO 5: n8n LLAMA MCP → ODOO
+# =============================================================================
+
+step_5_n8n_mcp_odoo_call:
+  nodes:
+    - node_9_if_route:
+        type: "n8n-nodes-base.if"
+        name: "Check Route"
+        condition:
+          - "={{ $json.route === 'odoo_invoice_lookup' }}"
+    
+    - node_10_call_mcp:
+        type: "n8n-nodes-base.httpRequest"
+        name: "MCP: Odoo Find Invoice"
+        method: "POST"
+        url: "https://mcp.smarterbot.cl/api/tools/odoo_find_invoice"
+        headers:
+          Authorization: "Bearer {{ $node['Resolve Tenant ID'].json.credentials.odoo_api_key }}"
+          X-SMOS-Tenant-ID: "={{ $node['Resolve Tenant ID'].json.tenant_id }}"
+          X-SMOS-Identity: "smarterbotcl@gmail.com"
+          Content-Type: "application/json"
+        body:
+          invoice_number: "={{ $node['Call Botpress Support Agent'].json.actions[0].params.invoice_number }}"
+          odoo_instance_url: "={{ $node['Resolve Tenant ID'].json.credentials.odoo_instance_url }}"
+        response_format: "json"
+  
+  mcp_response_example: |
+    {
+      "invoice": {
+        "number": "INV-2025-001",
+        "date": "2025-10-15",
+        "customer_name": "María González",
+        "customer_phone": "+56912345678",
+        "product_name": "Zapatilla Running Azul",
+        "product_sku": "ZRA-42",
+        "price": 39990,
+        "currency": "CLP",
+        "warranty_expiration": "2026-01-13",
+        "warranty_status": "active",
+        "return_eligible": true,
+        "return_deadline": "2025-11-14"
+      },
+      "customer_history": {
+        "total_purchases": 3,
+        "total_returns": 0,
+        "customer_tier": "regular"
+      }
+    }
+
+# =============================================================================
+# PASO 6: n8n CONSTRUYE RESPUESTA Y ENVÍA A CHATWOOT
+# =============================================================================
+
+step_6_n8n_send_response:
+  nodes:
+    - node_11_build_reply:
+        type: "n8n-nodes-base.function"
+        name: "Build Reply Message"
+        code: |
+          const invoice = $node['MCP: Odoo Find Invoice'].json.invoice;
+          const replySuggestion = $node['Call Botpress Support Agent'].json.reply_suggestion;
+          const ragContext = $node['Call Botpress Support Agent'].json.rag_context;
+          
+          let reply = `${replySuggestion}\n\n`;
+          reply += `📋 **Detalles de tu compra:**\n`;
+          reply += `• Producto: ${invoice.product_name}\n`;
+          reply += `• Fecha de compra: ${invoice.date}\n`;
+          reply += `• Garantía válida hasta: ${invoice.warranty_expiration}\n\n`;
+          
+          if (invoice.return_eligible) {
+            reply += `✅ Puedes hacer devolución gratuita hasta el ${invoice.return_deadline}.\n\n`;
+            reply += `📸 Para procesar tu devolución:\n`;
+            reply += `1. Envía foto del producto con el defecto\n`;
+            reply += `2. Te enviamos etiqueta de devolución gratis\n`;
+            reply += `3. Reembolso en 7 días hábiles\n\n`;
+          } else {
+            reply += `⚠️ El plazo de devolución ya expiró (30 días desde compra).\n`;
+            reply += `Pero tu garantía sigue activa hasta ${invoice.warranty_expiration}.\n\n`;
+          }
+          
+          reply += `¿En qué puedo ayudarte con tu ${invoice.product_name}?`;
+          
+          return {
+            json: {
+              content: reply,
+              conversation_id: $node['Chatwoot Webhook Receiver'].json.conversation.id,
+              account_id: $node['Chatwoot Webhook Receiver'].json.account.id
+            }
+          };
+    
+    - node_12_send_to_chatwoot:
+        type: "n8n-nodes-base.httpRequest"
+        name: "Send Reply to Chatwoot"
+        method: "POST"
+        url: "https://chatwoot.smarterbot.cl/api/v1/accounts/{{ $json.account_id }}/conversations/{{ $json.conversation_id }}/messages"
+        headers:
+          api_access_token: "={{ $node['Resolve Tenant ID'].json.credentials.chatwoot_api_token }}"
+          Content-Type: "application/json"
+        body:
+          content: "={{ $json.content }}"
+          message_type: "outgoing"
+          private: false
+        response_format: "json"
+    
+    - node_13_audit_log:
+        type: "n8n-nodes-base.httpRequest"
+        name: "Audit Log to Redpanda"
+        method: "POST"
+        url: "https://redpanda.smarterbot.cl/topics/smarteros.audit.ocr_support"
+        body:
+          tenant_id: "={{ $node['Resolve Tenant ID'].json.tenant_id }}"
+          flow_id: "e2e_ocr_support"
+          conversation_id: "={{ $json.conversation_id }}"
+          intent: "={{ $node['Call Botpress Support Agent'].json.intent }}"
+          ocr_confidence: "={{ $node['OCR: Extract Text from Image'].json.confidence }}"
+          invoice_found: "={{ $node['MCP: Odoo Find Invoice'].json.invoice !== null }}"
+          warranty_status: "={{ $node['MCP: Odoo Find Invoice'].json.invoice.warranty_status }}"
+          return_eligible: "={{ $node['MCP: Odoo Find Invoice'].json.invoice.return_eligible }}"
+          latency_ms: "={{ $now - $node['Chatwoot Webhook Receiver'].json.created_at }}"
+          timestamp: "={{ $now }}"
+
+# =============================================================================
+# RESULTADO FINAL
+# =============================================================================
+
+expected_result:
+  whatsapp_message_sent: true
+  latency: "< 8s"
+  customer_sees: |
+    Tu compra tiene garantía de 90 días hasta el 13 de enero de 2026. ¿Qué problema tiene el producto?
+    
+    📋 **Detalles de tu compra:**
+    • Producto: Zapatilla Running Azul
+    • Fecha de compra: 2025-10-15
+    • Garantía válida hasta: 2026-01-13
+    
+    ✅ Puedes hacer devolución gratuita hasta el 14 de noviembre de 2025.
+    
+    📸 Para procesar tu devolución:
+    1. Envía foto del producto con el defecto
+    2. Te enviamos etiqueta de devolución gratis
+    3. Reembolso en 7 días hábiles
+    
+    ¿En qué puedo ayudarte con tu Zapatilla Running Azul?
+
+# =============================================================================
+# MÉTRICAS Y MONITOREO
+# =============================================================================
+
+metrics:
+  latency_p50: "5.8s"
+  latency_p95: "7.4s"
+  latency_p99: "9.2s"
+  success_rate: "93.1%"
+  error_rate: "6.9%"
+  
+  errors_breakdown:
+    - "OCR confidence < 0.80: 3.2%"
+    - "Invoice not found in Odoo: 2.1%"
+    - "Image download timeout: 1.1%"
+    - "Botpress unavailable: 0.5%"
+
+ocr_performance:
+  avg_confidence: 0.92
+  invoice_detection_rate: "88%"
+  false_positive_rate: "5%"
+  supported_formats: ["jpg", "png", "pdf"]
+
+health_checks:
+  - endpoint: "https://n8n.smarterbot.cl/health"
+    interval: "30s"
+  - endpoint: "https://botpress.smarterbot.cl/api/v1/health"
+    interval: "30s"
+  - endpoint: "https://mcp.smarterbot.cl/health"
+    interval: "30s"
+  - endpoint: "https://chatwoot.smarterbot.cl/api/health"
+    interval: "30s"
+  - endpoint: "https://vision.googleapis.com"
+    interval: "60s"
+
+alerts:
+  - condition: "ocr_confidence < 0.70 for 10 consecutive messages"
+    action: "Alert ML team + review image quality"
+  - condition: "invoice_not_found_rate > 15%"
+    action: "Alert DevOps + check Odoo sync"
+  - condition: "latency_p95 > 10s"
+    action: "Slack alert + investigate OCR API"
+
+# =============================================================================
+# DEPENDENCIAS
+# =============================================================================
+
+dependencies:
+  services:
+    - name: "Chatwoot"
+      url: "https://chatwoot.smarterbot.cl"
+    - name: "n8n"
+      url: "https://n8n.smarterbot.cl"
+    - name: "Botpress"
+      url: "https://botpress.smarterbot.cl"
+    - name: "MCP"
+      url: "https://mcp.smarterbot.cl"
+    - name: "Odoo"
+      url: "https://{{ tenant }}.odoo.com"
+    - name: "Google Cloud Vision API"
+      url: "https://vision.googleapis.com"
+    - name: "Vault"
+      url: "https://vault.smarterbot.cl:8200"
+  
+  credentials_required:
+    - "secret/tenant/<TENANT_ID>/chatwoot/api_token"
+    - "secret/tenant/<TENANT_ID>/botpress/api_key"
+    - "secret/tenant/<TENANT_ID>/odoo/api_key"
+    - "secret/tenant/<TENANT_ID>/ocr/api_key"
+
+# =============================================================================
+# TESTING
+# =============================================================================
+
+test_scenarios:
+  - scenario: "Happy path: invoice found, warranty active"
+    input: [image: factura.jpg] + "Tengo un problema"
+    expected_ocr_confidence: "> 0.90"
+    expected_invoice_found: true
+    expected_warranty_status: "active"
+    expected_return_eligible: true
+  
+  - scenario: "Low OCR confidence"
+    input: [image: factura_borrosa.jpg]
+    expected_ocr_confidence: "< 0.70"
+    expected_fallback: "Por favor, envía una foto más clara de la factura"
+  
+  - scenario: "Invoice not found in Odoo"
+    input: [image: factura_otra_tienda.jpg]
+    expected_invoice_found: false
+    expected_response: "No encontré esa factura en nuestro sistema. ¿Compraste en nuestra tienda?"
+  
+  - scenario: "Warranty expired"
+    input: [image: factura_antigua.jpg] (purchase_date: 2024-01-01)
+    expected_warranty_status: "expired"
+    expected_response: "Tu garantía expiró el 2024-04-01. ¿Puedo ayudarte en algo más?"
+
+# =============================================================================
+# ROADMAP
+# =============================================================================
+
+roadmap:
+  q1_2025:
+    - "Deploy OCR workflow with Google Cloud Vision"
+    - "Integrate Botpress support agent with RAG"
+    - "Test with 3 tenants"
+  
+  q2_2025:
+    - "Add PDF invoice support"
+    - "Implement smart cropping (auto-detect invoice area)"
+    - "Multi-language OCR (EN + ES)"
+  
+  q3_2025:
+    - "Add product defect classification (computer vision)"
+    - "Auto-generate return labels"
+    - "Integration with logistics API (Chilexpress)"
+  
+  q4_2025:
+    - "Advanced fraud detection (invoice + product mismatch)"
+    - "Sentiment analysis on customer complaints"
+    - "Automated compensation offers (based on history)"

@@ -1,0 +1,146 @@
+# 🏥 Monitor Health — Spec del Agente de Salud de Contenedores
+
+version: "1.0"
+agent:
+  name: "monitor-health"
+  type: "monitoring-system"
+  model: "gemini-2.0-flash-exp"
+  provider: "google"
+  role: "Guardián de la salud de contenedores y recursos del sistema"
+
+capabilities:
+  - log_analysis
+  - resource_monitoring
+  - anomaly_detection
+  - auto_recovery_proposal
+  - predictive_maintenance
+
+responsibilities:
+  primary:
+    - "Monitorear estado de contenedores Docker (CPU, RAM, Status)"
+    - "Analizar logs en tiempo real buscando errores críticos"
+    - "Detectar fugas de memoria o picos de CPU"
+    - "Verificar conectividad entre microservicios"
+    - "Alertar proactivamente antes de caídas"
+  
+  secondary:
+    - "Sugerir optimizaciones de recursos (limits/requests)"
+    - "Generar reportes de uptime y disponibilidad"
+    - "Auditar reinicios frecuentes (crash loops)"
+
+input:
+  sources:
+    - type: "docker_stats"
+      mcp: "docker"
+      interval: "30s"
+    
+    - type: "container_logs"
+      path: "/var/lib/docker/containers/*/*.log"
+      filter: "level=error OR level=fatal"
+    
+    - type: "system_metrics"
+      command: "top -b -n 1"
+      interval: "1m"
+    
+    - type: "health_checks"
+      endpoints: ["https://app.smarterbot.cl/health", "http://localhost:8080/health"]
+      interval: "1m"
+
+output:
+  format: "health-report"
+  delivery:
+    - target: "director-gemini"
+      method: "json_file"
+      path: "/tmp/smarteros/alerts/health-{timestamp}.json"
+      condition: "severity >= medium"
+    
+    - target: "slack"
+      method: "message"
+      channel: "#ops-alerts"
+      condition: "severity == critical"
+    
+    - target: "metabase"
+      method: "db_insert"
+      table: "system_health_metrics"
+
+mcp_integration:
+  tier_1_monitoring:
+    - name: "docker"
+      use: "Listar contenedores, ver stats, inspeccionar logs"
+      auth: "vault:smarteros/mcp/docker"
+      commands:
+        - "docker stats --no-stream --format json"
+        - "docker ps -a --filter status=exited"
+        - "docker logs --tail 100"
+    
+    - name: "slack"
+      use: "Enviar alertas urgentes"
+      auth: "vault:smarteros/mcp/slack"
+  
+  tier_2_analysis:
+    - name: "metabase"
+      use: "Guardar métricas históricas"
+      auth: "vault:smarteros/mcp/metabase"
+    
+    - name: "openai"
+      use: "Analizar stack traces complejos"
+      auth: "vault:smarteros/mcp/openai"
+
+decision_making:
+  strategies:
+    - name: "severity_classification"
+      rules:
+        - "Container Down -> Critical"
+        - "CPU > 90% for 5m -> High"
+        - "Memory > 85% -> Medium"
+        - "Log Error Rate > 10/min -> Medium"
+    
+    - name: "recovery_action"
+      rules:
+        - "If container exited with code 137 (OOM) -> Suggest increase memory limit"
+        - "If connection refused -> Suggest check network/dependency"
+        - "If disk full -> Trigger cleanup agent"
+
+validation:
+  checks:
+    - check: "docker_socket_access"
+      command: "docker info"
+      fail_action: "alert_ops"
+    
+    - check: "metrics_freshness"
+      metric: "last_check_timestamp"
+      threshold: "< 2m ago"
+      fail_action: "restart_agent"
+
+monitoring:
+  self_health:
+    - metric: "check_latency"
+      threshold: "< 5s"
+    - metric: "false_positive_rate"
+      target: "< 1%"
+
+security:
+  permissions:
+    read:
+      - "docker:stats"
+      - "docker:logs"
+      - "/proc/**"
+    write:
+      - "slack:messages"
+      - "metabase:insert"
+    execute:
+      - "none (monitoring only)"
+
+examples:
+  - scenario: "High Memory Usage Detection"
+    trigger: "Container 'n8n' using 95% RAM"
+    action:
+      1. "Capture heap dump or top processes"
+      2. "Analyze logs for memory leak patterns"
+      3. "Alert Slack with graph and recommendation"
+      4. "Notify Director Gemini to schedule maintenance"
+
+notes: |
+  Este agente es puramente observacional. No toma acciones de reinicio
+  por sí mismo para evitar bucles destructivos. Delega la decisión
+  de intervención al Director Gemini o a operadores humanos.
