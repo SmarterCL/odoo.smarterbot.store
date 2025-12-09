@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { supabase } from '@/lib/supabaseClient'
 
 const MAILGUN_API_BASE = "https://api.mailgun.net/v3"
 const MAILGUN_VALIDATION_ENDPOINT = "https://api.mailgun.net/v4/address/validate"
@@ -149,6 +150,13 @@ export async function POST(request: Request) {
       )
     }
 
+    // Save contact to Supabase
+    const { error: supabaseError } = await supabase.from('contacts').insert([
+      { name, email, company, message, created_at: new Date().toISOString() },
+    ])
+    if (supabaseError) {
+      console.error('Supabase insert error:', supabaseError)
+    }
     return sendViaMailgun({ name, email, company, message, apiKey: mailgunApiKey, domain, fromEmail, toEmail })
   } catch (error) {
     console.error("Error en /api/contact:", error)

@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button"
 import { Menu, X } from "lucide-react"
 
 const navItems = [
-  { label: "Inicio", href: "#" },
+  { label: "Inicio", href: "/" },
+  { label: "SmarterBOT", href: "/smarterbot" },
+  { label: "Vinculante", href: "/smarterbot/vinculante" },
   { label: "Servicios", href: "#servicios" },
-  { label: "Diferenciadores", href: "#diferenciadores" },
   { label: "Sectores", href: "#sectores" },
   { label: "Contacto", href: "#contacto" },
 ]
